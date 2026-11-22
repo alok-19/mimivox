@@ -258,8 +258,6 @@ def test_rename_updates_past_rows_and_emits_event():
     state = _state_with_two_speakers()
     queue: asyncio.Queue = asyncio.Queue()
     state.add_client(queue)
-    web: list[dict] = []
-    state.web_broadcast = web.append
     assert state.rename_speaker("speaker-1", "Kyoko") is True
     labels = {e["speaker"]["id"]: e["speaker"]["label"] for e in state.events if "speaker" in e}
     assert labels == {"speaker-1": "Kyoko", "speaker-2": "Speaker 2"}
@@ -270,7 +268,6 @@ def test_rename_updates_past_rows_and_emits_event():
         "speaker": {"id": "speaker-1", "label": "Kyoko"},
         "timestamp_s": sent["timestamp_s"],
     }
-    assert web == [{"kind": "speaker_renamed", "speaker": {"id": "speaker-1", "label": "Kyoko"}}]
     assert state.speakers.identify(_clip(0)).label == "Kyoko"  # later rows too
 
 

@@ -29,16 +29,26 @@ def test_bearer_token_allows_private_routes(client):
     assert response.status_code == 200
 
 
-def test_stream_and_control_routes_require_authentication(client):
-    assert client.get("/stream").status_code == 401
-    assert client.get("/health").status_code == 401
-    assert client.post("/control", json={"action": "stop"}).status_code == 401
+def test_event_stream_requires_a_bearer_token(client):
+    assert client.get("/api/events").status_code == 401
 
 
-def test_root_page_is_available_without_token(client):
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "MimiVox" in response.text
+@pytest.mark.parametrize(
+    "method, path",
+    [
+        ("GET", "/"),
+        ("GET", "/stream"),
+        ("POST", "/control"),
+        ("GET", "/devices"),
+        ("GET", "/health"),
+        ("GET", "/docs"),
+        ("GET", "/redoc"),
+        ("GET", "/openapi.json"),
+    ],
+)
+def test_obsolete_routes_are_absent(client, method, path):
+    response = client.request(method, path, headers={"Authorization": "Bearer a-test-token"})
+    assert response.status_code == 404
 
 
 def test_rejects_non_loopback_host_even_with_token(client):
@@ -56,15 +66,24 @@ def test_accepts_loopback_hosts():
     assert not server._is_loopback_host("attacker.example")
 
 
-def test_server_binds_only_to_loopback_and_prints_fragment_token(monkeypatch, capsys):
-    monkeypatch.setattr(server.app.state, "api_token", "a-test-token")
+def test_standalone_server_requires_explicit_token(monkeypatch):
+    monkeypatch.delenv(server.API_TOKEN_ENV, raising=False)
+    monkeypatch.setattr(sys, "argv", ["mimivox-server"])
+
+    with pytest.raises(SystemExit):
+        server.main()
+
+
+def test_standalone_server_does_not_print_token(monkeypatch, capsys):
+    monkeypatch.setattr(server.app.state, "api_token", "old-token")
+    monkeypatch.setenv(server.API_TOKEN_ENV, "a-test-token")
     monkeypatch.setattr(server.uvicorn, "run", lambda *args, **kwargs: None)
     monkeypatch.setattr(sys, "argv", ["mimivox-server", "--host", "localhost"])
 
     server.main()
 
-    output = capsys.readouterr().out
-    assert "http://localhost:8765/#token=a-test-token" in output
+    assert server.app.state.api_token == "a-test-token"
+    assert "a-test-token" not in capsys.readouterr().out
 
 
 def test_native_mode_requires_launch_credentials(monkeypatch):

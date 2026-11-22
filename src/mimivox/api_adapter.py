@@ -182,10 +182,6 @@ class APISessionState:
         self.notes_cache: dict[str, dict[str, Any]] = {}
         # Notes being written for a meeting that just ended: {session_id: task}.
         self.auto_notes: dict[str, asyncio.Task] = {}
-        # Optional web-UI broadcast hook set by server.py (avoids circular import).
-        self.web_broadcast: Any | None = None
-        # Optional hook so server can keep its pipeline_task pointer in sync.
-        self.on_pipeline_task: Any | None = None
 
     def load_persisted_settings(self) -> dict[str, Any]:
         """Load settings from disk and refresh the active glossary."""
@@ -220,13 +216,6 @@ class APISessionState:
         if store:
             self.events.append(event)
         self._push(event)
-
-    def dual_broadcast(self, event: dict[str, Any]) -> None:
-        """Fan out a raw MimiVox event to web UI + Swift adapter."""
-        annotate_learning(event, self.settings)
-        if self.web_broadcast is not None:
-            self.web_broadcast(event)
-        self.handle_pipeline_event(event)
 
     def next_index(self) -> int:
         self._event_index += 1
@@ -326,10 +315,6 @@ class APISessionState:
             },
             store=False,
         )
-        if self.web_broadcast is not None:
-            self.web_broadcast(
-                {"kind": "speaker_renamed", "speaker": {"id": speaker_id, "label": label}}
-            )
         return True
 
     # -- status -------------------------------------------------------------
@@ -470,7 +455,8 @@ class APISessionState:
         return 0.0
 
     def handle_pipeline_event(self, event: dict[str, Any]) -> None:
-        """Translate a MimiVox SSE event into Swift MeetingEvent(s)."""
+        """Convert a pipeline event into API events."""
+        annotate_learning(event, self.settings)
         kind = event.get("kind")
 
         if kind == "session_start":
@@ -952,7 +938,7 @@ async def api_session_start(body: dict):
     if pair.uses_cat:
         notes_service.release_for_meeting()  # captions get the notes model's memory
 
-    api_state.dual_broadcast(
+    api_state.handle_pipeline_event(
         {
             "kind": "session_start",
             "wav": wav or source,
@@ -967,7 +953,7 @@ async def api_session_start(body: dict):
             live=live,
             asr_only=False,
             audio_device=device,
-            sse_broadcast=api_state.dual_broadcast,
+            sse_broadcast=api_state.handle_pipeline_event,
             control=api_state.control,
             max_duration_s=max_duration_s,
             asr_model_id=resolve_asr_model_live(settings) if live else None,
@@ -979,8 +965,6 @@ async def api_session_start(body: dict):
             pair=pair,
         )
     )
-    if api_state.on_pipeline_task is not None:
-        api_state.on_pipeline_task(api_state.pipeline_task)
     api_state.start_meter_loop()
 
     def _on_done(task: asyncio.Task) -> None:
@@ -1000,7 +984,7 @@ async def api_session_start(body: dict):
             if api_state.state not in ("failed",):
                 api_state.state = "completed"
                 api_state.error = None
-        api_state.dual_broadcast({"kind": "session_end"})
+        api_state.handle_pipeline_event({"kind": "session_end"})
 
     api_state.pipeline_task.add_done_callback(_on_done)
 

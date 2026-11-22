@@ -1,8 +1,8 @@
 # Language pairs
 
 A session has one `LanguagePair` (`src/mimivox/languages.py`): `source_lang` is what Whisper
-hears, `target_lang` is the caption language. Settings persist both codes; `/api/session/start`
-(and the web `/control` start) accept `source_lang` / `target_lang` to override them.
+hears, and `target_lang` is the caption language. Settings store both codes.
+`/api/session/start` accepts both fields to override the saved pair for a session.
 
 Supported: `ja-en` (default), `zh-en`, `ko-en`, `en-ja`. Anything else is a 400.
 

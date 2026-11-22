@@ -36,7 +36,7 @@ mimivox-server = "mimivox.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-mimivox = ["static/*", "lexicon/*", "silero/*"]
+mimivox = ["lexicon/*", "silero/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
