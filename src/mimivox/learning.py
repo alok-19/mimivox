@@ -353,6 +353,9 @@ VOCAB_FORMATS = {
 def write_vocabulary(
     fmt: str, words: list[dict[str, Any]], session_id: str | None, out_dir: str | Path
 ) -> Path:
+    from mimivox.session_archive import validate_session_id
+
+    validate_session_id(session_id)
     suffix, render = VOCAB_FORMATS[fmt]
     directory = Path(out_dir)
     directory.mkdir(parents=True, exist_ok=True)

@@ -59,9 +59,34 @@ def test_punctuation_only_comes_back_empty(client, monkeypatch):
     assert client.post("/api/dictate", content=_clip()).json()["text"] == ""
 
 
-@pytest.mark.parametrize("body", [b"", b"abc", _clip(0.1), _clip(61)])
+@pytest.mark.parametrize("body", [b"", b"abc", _clip(0.1)])
 def test_bad_clips_are_refused(client, body):
     assert client.post("/api/dictate", content=body).status_code == 400
+
+
+def test_decode_clip_rejects_oversized_input_before_copy(monkeypatch):
+    monkeypatch.setattr(
+        dictation.np,
+        "frombuffer",
+        lambda *_args, **_kwargs: pytest.fail("oversized input must be rejected before copying"),
+    )
+
+    result = dictation.decode_clip(b"\x00" * (dictation.MAX_BYTES + 4))
+
+    assert result == f"Dictation is limited to {dictation.MAX_SECONDS} seconds."
+
+
+def test_dictation_body_limit_is_checked_before_decoding(client, monkeypatch):
+    monkeypatch.setattr(dictation, "MAX_BYTES", 32)
+    monkeypatch.setattr(
+        dictation,
+        "decode_clip",
+        lambda _: pytest.fail("oversized audio must be rejected before decoding"),
+    )
+
+    response = client.post("/api/dictate", content=b"\x00" * 33)
+
+    assert response.status_code == 413
 
 
 def test_refused_while_a_meeting_is_captioned(client, monkeypatch):

@@ -62,18 +62,62 @@ public struct ModelSource: Equatable, Sendable {
         guard let url = URL(string: text),
             let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
             url.host?.isEmpty == false,
+            url.user == nil, url.password == nil,
             url.query == nil, url.fragment == nil
         else { return nil }
         return url
     }
 
-    /// Variables for the helper. `HF_TOKEN` is sent only to a custom endpoint,
-    /// never to huggingface.co.
+    /// Variables for the helper. A token is sent only to a custom HTTPS endpoint.
     public func helperEnvironment(token: String?) -> [String: String] {
-        guard let endpoint else { return [:] }
-        var env = ["HF_ENDPOINT": endpoint.absoluteString]
-        if let token, !token.isEmpty { env["HF_TOKEN"] = token }
+        var env = ["HF_HUB_DISABLE_IMPLICIT_TOKEN": "1", "HF_TOKEN": ""]
+        if let endpoint { env["HF_ENDPOINT"] = endpoint.absoluteString }
+        if allowsAccessToken, let token = token?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+            env["HF_TOKEN"] = token
+            env["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "0"
+        }
         return env
+    }
+
+    /// Whether a custom HTTPS endpoint can receive its access token.
+    public var allowsAccessToken: Bool {
+        guard let endpoint, endpoint.scheme?.lowercased() == "https",
+            endpoint.host?.isEmpty == false,
+            endpoint.user == nil, endpoint.password == nil,
+            endpoint.query == nil, endpoint.fragment == nil,
+            let host = normalizedHost(endpoint),
+            let standardHost = Self.standardEndpoint.host?.lowercased()
+        else { return false }
+
+        return host != standardHost && !host.hasSuffix(".\(standardHost)")
+    }
+
+    /// The normalized origin that can receive the access token, if one is configured.
+    public var accessTokenOrigin: String? {
+        guard allowsAccessToken, let endpoint, let host = normalizedHost(endpoint) else { return nil }
+        return "https://\(host):\(effectivePort(endpoint))"
+    }
+
+    /// A credentialed probe may follow redirects only within the same HTTPS origin.
+    public func permitsCredentialedRedirect(to destination: URL) -> Bool {
+        guard let endpoint, allowsAccessToken,
+            destination.scheme?.lowercased() == "https",
+            destination.user == nil, destination.password == nil,
+            let endpointHost = normalizedHost(endpoint),
+            let destinationHost = normalizedHost(destination)
+        else { return false }
+
+        return endpointHost == destinationHost
+            && effectivePort(endpoint) == effectivePort(destination)
+    }
+
+    private func effectivePort(_ url: URL) -> Int {
+        url.port ?? 443
+    }
+
+    private func normalizedHost(_ url: URL) -> String? {
+        guard let host = url.host?.lowercased() else { return nil }
+        return host.hasSuffix(".") ? String(host.dropLast()) : host
     }
 
     /// The translation model, which every install downloads (`CAT_MODEL_ID` in `config.py`).

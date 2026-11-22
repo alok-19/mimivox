@@ -98,6 +98,28 @@ def test_archive_idempotent_update(tmp_path, monkeypatch):
     assert listed[0]["event_count"] == 2
 
 
+@pytest.mark.parametrize("session_id", ["../outside", "nested/id", r"nested\id", ".hidden"])
+def test_archive_rejects_unsafe_session_ids(tmp_path, monkeypatch, session_id):
+    _patch_sessions_root(monkeypatch, tmp_path)
+
+    assert session_archive.load_session(session_id) is None
+    with pytest.raises(ValueError, match="invalid session ID"):
+        session_archive.archive_session(session_id, [])
+
+
+def test_archive_rejects_session_file_symlink_outside_directory(tmp_path, monkeypatch):
+    _patch_sessions_root(monkeypatch, tmp_path)
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"private": true}', encoding="utf-8")
+    session_archive.sessions_dir().mkdir(parents=True)
+    session_archive.session_file("sid").symlink_to(outside)
+
+    assert session_archive.load_session("sid") is None
+    with pytest.raises(ValueError, match="session path must stay inside"):
+        session_archive.archive_session("sid", [])
+    assert outside.read_text(encoding="utf-8") == '{"private": true}'
+
+
 def _api_client() -> TestClient:
     app = FastAPI()
     app.include_router(router)

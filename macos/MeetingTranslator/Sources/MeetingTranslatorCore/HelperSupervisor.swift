@@ -4,7 +4,7 @@ import Foundation
 public enum HelperPortPolicy: Equatable, Sendable {
     /// The app launches its own server on a free loopback port (bundled app).
     case automatic
-    /// Exactly this port: reuse a MimiVox server already there, else launch one.
+    /// Launch an owned helper on this port.
     case fixed(Int)
 }
 
@@ -21,7 +21,7 @@ public struct HelperConfiguration: Equatable, Sendable {
     public init(
         projectRoot: URL,
         host: String = "127.0.0.1",
-        portPolicy: HelperPortPolicy = .fixed(8765),
+        portPolicy: HelperPortPolicy = .automatic,
         pythonExecutable: URL = URL(fileURLWithPath: "/usr/bin/env"),
         pythonArgumentsPrefix: [String] = ProjectLocator.defaultPythonArgumentsPrefix(),
         environment: [String: String] = [:],
@@ -38,7 +38,7 @@ public struct HelperConfiguration: Equatable, Sendable {
     }
 
     public func baseURL(port: Int) -> URL {
-        URL(string: "http://\(host):\(port)/")!
+        URL(string: "https://\(host):\(port)/")!
     }
 
     public func helperArguments(port: Int, parentPID: Int32) -> [String] {
@@ -74,9 +74,6 @@ public struct HelperConfiguration: Equatable, Sendable {
 }
 
 extension HelperConfiguration {
-    /// Port of a dev (`swift run`) helper. Override with `MIMIVOX_PORT`.
-    public static let devDefaultPort = 8765
-
     /// Relative location of the bundled interpreter inside `MimiVox.app`.
     public static let bundledPythonRelativePath = "Contents/Resources/python/bin/python3"
 
@@ -129,7 +126,7 @@ extension HelperConfiguration {
         bundled(environment: environment)
             ?? HelperConfiguration(
                 projectRoot: ProjectLocator.defaultProjectRoot(environment: environment),
-                portPolicy: portPolicy(environment: environment, fallback: .fixed(devDefaultPort))
+                portPolicy: portPolicy(environment: environment, fallback: .automatic)
             )
     }
 }

@@ -447,6 +447,7 @@ async def display_worker(
     control: SessionControl | None = None,
     partial_en_enabled: bool = True,
     pair: LanguagePair = DEFAULT_PAIR,
+    show_transcript: bool = True,
 ) -> None:
     _partial_accum: str = ""
     _has_partial: bool = False
@@ -523,11 +524,12 @@ async def display_worker(
         if item.kind == "partial":
             sep = " " if _partial_accum else ""
             _partial_accum += sep + item.text
-            preview = _partial_accum[:80] + ("…" if len(_partial_accum) > 80 else "")
-            if _has_partial:
-                print("\033[1A\033[2K", end="")
-            print(f"\033[2m[{item.audio_ts}] ⟳  {preview}\033[0m")
-            _has_partial = True
+            if show_transcript:
+                preview = _partial_accum[:80] + ("…" if len(_partial_accum) > 80 else "")
+                if _has_partial:
+                    print("\033[1A\033[2K", end="")
+                print(f"\033[2m[{item.audio_ts}] ⟳  {preview}\033[0m")
+                _has_partial = True
             if sse_broadcast:
                 # Full utterance accum so clients can use latest partial as JA preview.
                 sse_broadcast(
@@ -627,11 +629,12 @@ async def display_worker(
             merged_into.ja += item.text
             merged_into.end_s = end_s
             span_s = end_s - merged_into.start_s
-            if _has_partial:
-                print("\033[1A\033[2K", end="")
-            print(f"[{item.audio_ts}] 🔧 revised #{merged_into.id}")
-            print(f"  🇯🇵 JA : {merged_into.ja}")
-            print(f"  🇬🇧 EN : {en_text}")
+            if show_transcript:
+                if _has_partial:
+                    print("\033[1A\033[2K", end="")
+                print(f"[{item.audio_ts}] 🔧 revised #{merged_into.id}")
+                print(f"  🇯🇵 JA : {merged_into.ja}")
+                print(f"  🇬🇧 EN : {en_text}")
             _has_partial = False
             _partial_accum = ""
             if control is not None:
@@ -677,14 +680,15 @@ async def display_worker(
         _has_partial = False
         _partial_accum = ""
 
-        print(f"[{item.audio_ts}] 🕐 {item.wall_time}")
-        if item.speaker:
-            print(f"  🗣  SPK: {item.speaker['label']}  (embed {item.speaker_ms:.0f}ms)")
-        print(f"  🇯🇵 JA : {item.text}")
-        print(
-            f"  🇬🇧 EN : {en_text if en_text else ('(skipped: catching up)' if skip_tr else '(empty)')}"
-        )
-        print(f"  ⏱️  ASR={item.asr_latency:.2f}s | CAT={tr_lat:.2f}s | Total={total:.2f}s")
+        if show_transcript:
+            print(f"[{item.audio_ts}] 🕐 {item.wall_time}")
+            if item.speaker:
+                print(f"  🗣  SPK: {item.speaker['label']}  (embed {item.speaker_ms:.0f}ms)")
+            print(f"  🇯🇵 JA : {item.text}")
+            print(
+                f"  🇬🇧 EN : {en_text if en_text else ('(skipped: catching up)' if skip_tr else '(empty)')}"
+            )
+            print(f"  ⏱️  ASR={item.asr_latency:.2f}s | CAT={tr_lat:.2f}s | Total={total:.2f}s")
 
         confidence = assess(item.asr_signals, mt_signals, en_text).as_dict()
         if control is not None:
@@ -773,6 +777,7 @@ async def run(
     speaker_tracker: SpeakerTracker | None = None,
     save_log: bool = True,
     pair: LanguagePair = DEFAULT_PAIR,
+    show_transcript: bool = True,
 ) -> None:
     # Both models execute on Metal. Concurrent inference causes severe memory
     # contention on 16 GB machines; with clause-sized ASR work, serialization
@@ -878,6 +883,7 @@ async def run(
                 control=control,
                 partial_en_enabled=partial_en_enabled,
                 pair=pair,
+                show_transcript=show_transcript,
             )
         )
 

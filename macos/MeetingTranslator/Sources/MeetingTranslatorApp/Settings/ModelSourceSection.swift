@@ -4,6 +4,11 @@ import SwiftUI
 
 /// The access token for a private model mirror, kept in the login Keychain.
 enum ModelSourceToken {
+    private struct Credential: Codable {
+        let token: String
+        let origin: String
+    }
+
     private static var query: [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -12,7 +17,7 @@ enum ModelSourceToken {
         ]
     }
 
-    static func read() -> String? {
+    private static func readData() -> Data? {
         var match = query
         match[kSecReturnData as String] = true
         match[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -20,18 +25,60 @@ enum ModelSourceToken {
         guard SecItemCopyMatching(match as CFDictionary, &item) == errSecSuccess,
             let data = item as? Data
         else { return nil }
-        return String(data: data, encoding: .utf8)
+        return data
     }
 
-    static var exists: Bool { read()?.isEmpty == false }
+    static func read(for source: ModelSource) -> String? {
+        guard let origin = source.accessTokenOrigin,
+            let data = readData(),
+            let credential = try? JSONDecoder().decode(Credential.self, from: data),
+            credential.origin == origin
+        else { return nil }
+        return credential.token
+    }
 
-    /// An empty token removes the saved one.
-    static func save(_ token: String) {
-        SecItemDelete(query as CFDictionary)
-        guard !token.isEmpty else { return }
+    static func save(_ token: String, for source: ModelSource) {
+        guard !token.isEmpty, let origin = source.accessTokenOrigin,
+            let data = try? JSONEncoder().encode(Credential(token: token, origin: origin))
+        else { return }
+
+        let result = SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        guard result == errSecItemNotFound else { return }
+
         var item = query
-        item[kSecValueData as String] = Data(token.utf8)
+        item[kSecValueData as String] = data
         SecItemAdd(item as CFDictionary, nil)
+    }
+}
+
+private final class MirrorProbeRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private let source: ModelSource
+    private let carriesCredential: Bool
+
+    init(source: ModelSource, carriesCredential: Bool) {
+        self.source = source
+        self.carriesCredential = carriesCredential
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard carriesCredential else {
+            completionHandler(request)
+            return
+        }
+        guard let destination = request.url, source.permitsCredentialedRedirect(to: destination) else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
     }
 }
 
@@ -59,6 +106,10 @@ struct ModelSourceSection: View {
         endpoint.trimmingCharacters(in: .whitespaces) != savedText || !token.isEmpty
     }
 
+    private var hasTokenForDraft: Bool {
+        hasToken && draft?.accessTokenOrigin == source.accessTokenOrigin
+    }
+
     var body: some View {
         Section {
             if source.isLocked {
@@ -70,10 +121,10 @@ struct ModelSourceSection: View {
             }
             SecureField(
                 L10n.text("Access token"), text: $token,
-                prompt: Text(L10n.text(hasToken ? "Saved" : "Optional"))
+                prompt: Text(L10n.text(hasTokenForDraft ? "Saved" : "Optional"))
             )
             .onSubmit(apply)
-            .disabled(source.endpoint == nil && endpoint.isEmpty)
+            .disabled(draft?.allowsAccessToken != true)
             HStack {
                 checkLabel
                 Spacer()
@@ -104,14 +155,15 @@ struct ModelSourceSection: View {
         return switch source.origin {
         case .managed:
             L10n.text(
-                "Set by your organization. A Hugging Face mirror, such as Artifactory or Nexus. The token is only sent to this address."
+                "Set by your organization. Use an HTTPS mirror to send an access token. HTTP mirrors work without a token."
             )
         case .build:
             L10n.text(
-                "This copy of MimiVox was built to download from this mirror. Enter another address to override it.")
+                "This copy of MimiVox was built to download from this mirror. Enter another address to override it. Use HTTPS for an access token."
+            )
         case .user, .standard:
             L10n.text(
-                "Leave empty for huggingface.co, or enter a Hugging Face mirror such as Artifactory or Nexus. The token is only sent to that mirror."
+                "Leave empty for huggingface.co, or enter a Hugging Face mirror. Use HTTPS to send an access token. HTTP mirrors work without a token."
             )
         }
     }
@@ -132,7 +184,7 @@ struct ModelSourceSection: View {
     private func load() {
         source = ModelSource.current()
         endpoint = savedText
-        hasToken = ModelSourceToken.exists
+        hasToken = ModelSourceToken.read(for: source) != nil
     }
 
     /// The source the fields describe, before they are saved.
@@ -149,8 +201,13 @@ struct ModelSourceSection: View {
 
     private func apply() {
         guard isEdited, !store.hasActiveSession else { return }
-        guard draft != nil else {
+        guard let selectedSource = draft else {
             error = L10n.text("Enter an address that starts with https:// or http://.")
+            return
+        }
+        let enteredToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard enteredToken.isEmpty || selectedSource.allowsAccessToken else {
+            error = L10n.text("An HTTPS address is required to use an access token.")
             return
         }
         error = nil
@@ -162,7 +219,7 @@ struct ModelSourceSection: View {
                 UserDefaults.standard.set(url.absoluteString, forKey: ModelSource.defaultsKey)
             }
         }
-        if !token.isEmpty { ModelSourceToken.save(token) }
+        if !enteredToken.isEmpty { ModelSourceToken.save(enteredToken, for: selectedSource) }
         token = ""
         load()
         check = .idle
@@ -178,16 +235,21 @@ struct ModelSourceSection: View {
         check = .running
         var request = URLRequest(url: draft.probeURL(), timeoutInterval: 10)
         request.httpMethod = "HEAD"
-        let secret = token.isEmpty ? (draft.endpoint == nil ? nil : ModelSourceToken.read()) : token
-        if let secret, !secret.isEmpty, draft.endpoint != nil {
+        let enteredToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        let secret = enteredToken.isEmpty ? ModelSourceToken.read(for: draft) : enteredToken
+        let carriesCredential = draft.allowsAccessToken && secret?.isEmpty == false
+        if carriesCredential, let secret {
             request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
         }
+        let delegate = MirrorProbeRedirectDelegate(source: draft, carriesCredential: carriesCredential)
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
         do {
-            let (_, response) = try await URLSession.shared.data(for: request)
+            let (_, response) = try await session.data(for: request)
             let code = response.statusCode
             check =
                 switch code {
-                case 200..<400: .reachable
+                case 200..<300: .reachable
                 case 401, 403: .failed(String(format: L10n.text("Access denied (%@). Check the token."), "\(code)"))
                 case 404: .failed(L10n.text("Translation model not found on this mirror (404)."))
                 default: .failed(String(format: L10n.text("The mirror answered %@."), "\(code)"))

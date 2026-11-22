@@ -80,6 +80,20 @@ router = APIRouter(prefix="/api")
 _DEFAULT_REPLAY = str(Path(DATA_DIR) / "fixtures" / "meeting-recording.wav")
 _AUDIO_LEVEL_INTERVAL_S = 0.1
 _HEALTH_INTERVAL_S = 1.0
+_MAX_NATIVE_AUDIO_BODY_BYTES = 8 * 1024 * 1024
+
+
+async def _read_bounded_request_body(request: Request, max_bytes: int) -> bytes | None:
+    content_length = request.headers.get("content-length", "")
+    if content_length.isdecimal() and int(content_length) > max_bytes:
+        return None
+
+    body = bytearray()
+    async for chunk in request.stream():
+        if len(body) + len(chunk) > max_bytes:
+            return None
+        body.extend(chunk)
+    return bytes(body)
 
 
 def _default_settings() -> dict[str, Any]:
@@ -959,6 +973,7 @@ async def api_session_start(body: dict):
             asr_model_id=resolve_asr_model_live(settings) if live else None,
             partial_en_enabled=_partial_en_enabled(settings),
             save_log=saves_transcripts(settings),
+            show_transcript=False,
             audio_push=audio_push,
             speaker_tracker=api_state.speakers,
             pair=pair,
@@ -1010,7 +1025,9 @@ async def api_session_audio(request: Request, session_id: str = ""):
             {"message": "no native system-audio session", "session_id": api_state.session_id},
             status_code=409,
         )
-    body = await request.body()
+    body = await _read_bounded_request_body(request, _MAX_NATIVE_AUDIO_BODY_BYTES)
+    if body is None:
+        return JSONResponse({"message": "audio body is too large"}, status_code=413)
     if len(body) % 4:
         return JSONResponse({"message": "body must be float32 samples"}, status_code=400)
     push.push(np.frombuffer(body, dtype="<f4"))
@@ -1565,7 +1582,13 @@ async def api_dictate(request: Request, hint: str = "ja"):
         return JSONResponse(
             {"message": "Dictation is off while a meeting is being captioned."}, status_code=409
         )
-    audio = dictation.decode_clip(await request.body())
+    body = await _read_bounded_request_body(request, dictation.MAX_BYTES)
+    if body is None:
+        return JSONResponse(
+            {"message": f"Dictation is limited to {dictation.MAX_SECONDS} seconds."},
+            status_code=413,
+        )
+    audio = dictation.decode_clip(body)
     if isinstance(audio, str):
         return JSONResponse({"message": audio}, status_code=400)
     hint = hint if hint in dictation.LANGUAGES else "ja"

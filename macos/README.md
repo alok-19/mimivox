@@ -1,12 +1,12 @@
 # MimiVox macOS client
 
 Native SwiftUI front end for MimiVox. It is a UI client: the models run in the Python server,
-which the app talks to over HTTP and SSE.
+which the app talks to over HTTPS and SSE.
 
 ## Architecture
 
 ```
-MimiVox.app ──HTTP/SSE──▶ mimivox server (own free port, or :8765 in dev runs)
+MimiVox.app ──HTTPS/SSE──▶ mimivox server (own loopback port)
                             ├─ /api/*     the app's contract (src/mimivox/api_adapter.py)
                             ├─ /stream    web UI SSE
                             └─ /control   web UI start/stop
@@ -34,9 +34,9 @@ At launch the app starts `python3 -m mimivox.server` from the bundle on a free l
 it picks itself, so whatever else listens on 8765 does not matter. It waits for as long as the
 server process lives (the first launch downloads models) and shows "Server failed" with a
 Retry button if the process exits. The app passes `--parent-pid`, so the server exits within
-a second or two of the app, even after a crash. `MIMIVOX_PORT` pins the port: the app reuses
-a MimiVox server already there and refuses one that is not MimiVox. Server stdout and stderr
-go to `logs/helper.log` in the data folder (truncated past 5 MB).
+a second or two of the app, even after a crash. Set `MIMIVOX_PORT` to use a specific port.
+The port must be free. The app verifies the helper's certificate and authenticates requests
+with a token for that launch. Each app start replaces `logs/helper.log` in the data folder.
 
 User data (settings, sessions, transcripts, the search index, logs) lives in
 `~/Library/Application Support/MimiVox`; `MIMIVOX_DATA_DIR` overrides it for the app and the
@@ -45,13 +45,12 @@ server. Models stay in the Hugging Face cache and are downloaded on first use.
 ## Run from source (development)
 
 ```bash
-make server     # terminal 1, from the repo root
-make app-dev    # terminal 2
+make app-dev
 ```
 
-Without the bundled Python, the app connects to the server on 8765 (or `MIMIVOX_PORT`), and
-if none answers it tries `uv run python -m mimivox.server`. Starting the server yourself warms the models first.
-Data then lives in the repo's `data/`.
+The source build starts its own helper on a free loopback port with
+`uv run python -m mimivox.server`. Set `MIMIVOX_PORT` to use a specific free port.
+The helper stores data in the repo's `data/`.
 
 Checks: `make swift-check`. Style: `swift format lint -r Sources`.
 

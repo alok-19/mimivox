@@ -8,9 +8,39 @@ import numpy as np
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
-from mimivox.api_adapter import APISessionState, api_state, router
+from mimivox.api_adapter import APISessionState, _read_bounded_request_body, api_state, router
 from mimivox.session_control import SessionControl
+
+
+async def test_bounded_request_reader_stops_when_stream_exceeds_limit():
+    chunks = iter([b"12345678", b"90abc"])
+    received = 0
+
+    async def receive():
+        nonlocal received
+        received += 1
+        return {"type": "http.request", "body": next(chunks), "more_body": received < 2}
+
+    request = Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/dictate",
+            "raw_path": b"/api/dictate",
+            "query_string": b"",
+            "headers": [],
+            "server": ("test", 80),
+            "client": ("test", 1234),
+        },
+        receive,
+    )
+
+    assert await _read_bounded_request_body(request, 10) is None
+    assert received == 2
 
 
 def test_final_event_emits_asr_and_translation():
@@ -691,7 +721,7 @@ def test_session_audio_rejects_without_native_session():
     _reset_api_session()
 
 
-def test_session_audio_pushes_samples_to_running_session():
+def test_session_audio_pushes_samples_to_running_session(monkeypatch):
     from mimivox.audio import PushAudioSource
 
     _reset_api_session()
@@ -705,6 +735,10 @@ def test_session_audio_pushes_samples_to_running_session():
     api_state.audio_push = push
 
     client = _api_client()
+    monkeypatch.setattr("mimivox.api_adapter._MAX_NATIVE_AUDIO_BODY_BYTES", 8192)
+    oversized = client.post("/api/session/audio?session_id=s1", content=b"\x00" * 8193)
+    assert oversized.status_code == 413
+    assert received == []
     samples = np.linspace(-0.5, 0.5, 1600, dtype="<f4")
     resp = client.post("/api/session/audio?session_id=s1", content=samples.tobytes())
     assert resp.status_code == 204

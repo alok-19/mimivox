@@ -15,6 +15,7 @@ import numpy as np
 from mimivox.config import SAMPLE_RATE
 
 MAX_SECONDS = 60
+MAX_BYTES = MAX_SECONDS * SAMPLE_RATE * 4
 LANGUAGES = ("ja", "en")
 
 
@@ -57,9 +58,9 @@ def decode_clip(raw: bytes) -> np.ndarray | str:
     """The clip as samples, or why it cannot be used."""
     if not raw or len(raw) % 4:
         return "Expected mono float32 audio at 16 kHz."
-    audio = np.frombuffer(raw, dtype="<f4").astype(np.float32)
-    if audio.size > MAX_SECONDS * SAMPLE_RATE:
+    if len(raw) > MAX_BYTES:
         return f"Dictation is limited to {MAX_SECONDS} seconds."
+    audio = np.frombuffer(raw, dtype="<f4").astype(np.float32)
     if audio.size < SAMPLE_RATE // 4:
         return "The recording was too short."
     return audio

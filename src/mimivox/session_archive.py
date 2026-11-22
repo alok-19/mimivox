@@ -50,7 +50,29 @@ def index_path() -> Path:
 
 
 def session_file(session_id: str) -> Path:
-    return _SESSIONS_DIR / f"{session_id}.json"
+    return _contained_session_path(session_id, ".json")
+
+
+def validate_session_id(session_id: str | None) -> str | None:
+    if session_id is None:
+        return None
+    if not _safe_id(session_id):
+        raise ValueError("invalid session ID")
+    return session_id
+
+
+def _contained_session_path(session_id: str, suffix: str) -> Path:
+    session_id = validate_session_id(session_id)
+    if session_id is None:
+        raise ValueError("session ID is required")
+    path = _SESSIONS_DIR / f"{session_id}{suffix}"
+    expected_path = _SESSIONS_DIR.resolve() / f"{session_id}{suffix}"
+    try:
+        if path.resolve() != expected_path:
+            raise ValueError("session path must stay inside the sessions directory")
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("session path must stay inside the sessions directory") from exc
+    return path
 
 
 def library_path() -> Path:
@@ -71,7 +93,7 @@ register_delete_hook(_remove_from_library)
 
 
 def gaps_dir(session_id: str) -> Path:
-    return _SESSIONS_DIR / f"{session_id}.gaps"
+    return _contained_session_path(session_id, ".gaps")
 
 
 def gap_audio_file(session_id: str, gap_id: int) -> Path:
@@ -91,13 +113,17 @@ def save_gap_audio(session_id: str, gap_id: int, audio: Any) -> bool:
             wf.setsampwidth(2)
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes(pcm.tobytes())
-    except OSError:
+    except (OSError, ValueError):
         return False
     return True
 
 
 def remove_gap_audio(session_id: str) -> None:
-    shutil.rmtree(gaps_dir(session_id), ignore_errors=True)
+    if _safe_id(session_id):
+        try:
+            shutil.rmtree(gaps_dir(session_id), ignore_errors=True)
+        except ValueError:
+            return
 
 
 register_delete_hook(remove_gap_audio)
@@ -117,9 +143,9 @@ def _read_index() -> list[dict[str, Any]]:
     except (OSError, json.JSONDecodeError):
         return []
     if isinstance(data, list):
-        return [e for e in data if isinstance(e, dict) and e.get("id")]
+        return [e for e in data if isinstance(e, dict) and _safe_id(e.get("id"))]
     if isinstance(data, dict) and isinstance(data.get("sessions"), list):
-        return [e for e in data["sessions"] if isinstance(e, dict) and e.get("id")]
+        return [e for e in data["sessions"] if isinstance(e, dict) and _safe_id(e.get("id"))]
     return []
 
 
@@ -196,7 +222,7 @@ def archive_session(
     pinned_ids: list[int] | None = None,
 ) -> Path:
     """Write session archive and update index. Returns path to session JSON."""
-    if not session_id:
+    if validate_session_id(session_id) is None:
         raise ValueError("session_id required")
     started = started_at or datetime.now(timezone.utc).isoformat()
     lab = (label or "session").strip() or "session"
@@ -253,7 +279,10 @@ def list_sessions() -> list[dict[str, Any]]:
 
 
 def load_session(session_id: str) -> dict[str, Any] | None:
-    path = session_file(session_id)
+    try:
+        path = session_file(session_id)
+    except ValueError:
+        return None
     if not path.exists():
         return None
     try:
@@ -267,7 +296,13 @@ def load_session(session_id: str) -> dict[str, Any] | None:
 
 def _safe_id(session_id: str) -> bool:
     return (
-        bool(session_id) and session_id == Path(session_id).name and not session_id.startswith(".")
+        isinstance(session_id, str)
+        and bool(session_id)
+        and session_id == Path(session_id).name
+        and "/" not in session_id
+        and "\\" not in session_id
+        and "\x00" not in session_id
+        and not session_id.startswith(".")
     )
 
 
@@ -281,7 +316,10 @@ def delete_session(session_id: str) -> bool:
     if not _safe_id(session_id):
         return False
     with _io_lock:
-        path = session_file(session_id)
+        try:
+            path = session_file(session_id)
+        except ValueError:
+            return False
         existed = path.exists()
         if existed:
             try:
@@ -316,9 +354,12 @@ def delete_session(session_id: str) -> bool:
 def relabel_speaker(session_id: str, speaker_id: str, label: str) -> bool:
     """Rename a speaker across an archived session's events. True if changed."""
     with _io_lock:
-        path = session_file(session_id)
         data = load_session(session_id)
         if data is None:
+            return False
+        try:
+            path = session_file(session_id)
+        except ValueError:
             return False
         changed = False
         for ev in data.get("events") or []:

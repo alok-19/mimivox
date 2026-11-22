@@ -91,8 +91,14 @@ def purge_expired(
     deleted: list[str] = []
     for entry in session_archive.list_sessions():
         sid = entry.get("id")
-        started = _parse_time(entry.get("started_at"), session_archive.session_file(sid))
-        if sid and started is not None and started < cutoff and session_archive.delete_session(sid):
+        if not sid:
+            continue
+        try:
+            archive_path = session_archive.session_file(sid)
+        except ValueError:
+            continue
+        started = _parse_time(entry.get("started_at"), archive_path)
+        if started is not None and started < cutoff and session_archive.delete_session(sid):
             deleted.append(sid)
     if clock_mtime:
         for path in _derived_files():
@@ -142,11 +148,16 @@ def _orphan_gap_dirs() -> list[Path]:
     directory = session_archive.sessions_dir()
     if not directory.is_dir():
         return []
-    return [
-        p
-        for p in directory.glob("*.gaps")
-        if not session_archive.session_file(p.name.removesuffix(".gaps")).exists()
-    ]
+    found: list[Path] = []
+    for path in directory.glob("*.gaps"):
+        session_id = path.name.removesuffix(".gaps")
+        try:
+            archive_path = session_archive.session_file(session_id)
+        except ValueError:
+            continue
+        if not archive_path.exists():
+            found.append(path)
+    return found
 
 
 def _unlink(path: Path) -> int:

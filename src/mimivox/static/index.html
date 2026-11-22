@@ -480,8 +480,26 @@
   </footer>
 
   <script>
+    const API_TOKEN = (() => {
+      const fragment = new URLSearchParams(location.hash.slice(1));
+      const sharedToken = fragment.get('token');
+      if (sharedToken) {
+        sessionStorage.setItem('mimivox:api-token', sharedToken);
+        history.replaceState(null, '', location.pathname + location.search);
+        return sharedToken;
+      }
+      return sessionStorage.getItem('mimivox:api-token') || '';
+    })();
+
+    function apiFetch(input, init = {}) {
+      const headers = new Headers(init.headers || {});
+      headers.set('Authorization', `Bearer ${API_TOKEN}`);
+      return fetch(input, { ...init, headers });
+    }
+
     /* ── State ─────────────────────────────────────────────────────────── */
-    let evtSource = null;
+    let sseController = null;
+    let sseRetryTimer = null;
     let sessionLog = [];        // {ts, ja, en, asr_ms, translate_ms, total_ms}
     let totalMs = 0;
     let chunkCount = 0;
@@ -499,7 +517,7 @@
     async function refreshPrivacyBadge() {
       const badge = document.getElementById('privacy-badge');
       try {
-        const p = (await (await fetch('/api/status')).json()).privacy;
+        const p = (await (await apiFetch('/api/status')).json()).privacy;
         if (!p) return;
         const lock = p.offline_locked ? 'On-device · offline' : 'On-device · downloads allowed';
         badge.textContent = `🔒 ${lock} · ${RETENTION_LABELS[p.retention_policy] || p.retention_policy}`;
@@ -531,7 +549,7 @@
     /* Language pairs: ja-en is the default; others need the optional translation model. */
     (async () => {
       try {
-        const data = await (await fetch('/api/languages')).json();
+        const data = await (await apiFetch('/api/languages')).json();
         for (const p of data.pairs) {
           const opt = document.createElement('option');
           opt.value = p.code;
@@ -546,26 +564,52 @@
     const deviceLabel = document.getElementById('device-label');
 
     /* ── SSE connection ────────────────────────────────────────────────── */
-    function connectSSE() {
-      if (evtSource) evtSource.close();
+    async function connectSSE() {
+      if (sseController) sseController.abort();
+      if (sseRetryTimer) clearTimeout(sseRetryTimer);
 
-      evtSource = new EventSource('/stream');
-
-      evtSource.onopen = () => {
+      const controller = new AbortController();
+      sseController = controller;
+      try {
+        const response = await apiFetch('/stream', { signal: controller.signal });
+        if (response.status === 401) {
+          connEl.textContent = '● Open the current browser link from the server terminal';
+          connEl.className = 'error';
+          return;
+        }
+        if (!response.ok || !response.body) throw new Error('SSE request failed');
         connEl.textContent = '● SSE connected';
         connEl.className = 'connected';
-      };
 
-      evtSource.onerror = () => {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (!controller.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) throw new Error('SSE stream ended');
+          buffer += decoder.decode(value, { stream: true });
+          let boundary;
+          while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const data = frame.split(/\r?\n/)
+              .filter(line => line.startsWith('data: '))
+              .map(line => line.slice(6))
+              .join('\n');
+            if (!data) continue;
+            let event;
+            try { event = JSON.parse(data); } catch { continue; }
+            handleEvent(event);
+          }
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
         connEl.textContent = '● SSE error — retrying';
         connEl.className = 'error';
-      };
-
-      evtSource.onmessage = (e) => {
-        let event;
-        try { event = JSON.parse(e.data); } catch { return; }
-        handleEvent(event);
-      };
+        sseRetryTimer = setTimeout(() => {
+          if (sseController === controller) connectSSE();
+        }, 1000);
+      }
     }
 
     /* ── Event handler ─────────────────────────────────────────────────── */
@@ -756,7 +800,7 @@
       chip.addEventListener('click', async () => {
         const label = prompt('Rename speaker', chip.textContent);
         if (!label || !label.trim()) return;
-        await fetch('/api/session/speakers/rename', {
+        await apiFetch('/api/session/speakers/rename', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id: sp.id, label: label.trim() }),
@@ -844,6 +888,7 @@
 
       const meta = document.createElement('div');
       meta.className = 'card-meta';
+      card.appendChild(meta);
 
       const tsSpan = document.createElement('span');
       tsSpan.textContent = `[${ts}]`;
@@ -883,7 +928,6 @@
       jaEl.className = 'ja';
       setJa(jaEl, ja, tokens);
 
-      card.appendChild(meta);
       card.appendChild(jaEl);
 
       if (!partial && !translating && en) {
@@ -925,7 +969,7 @@
     /* ── Device dropdown ───────────────────────────────────────────────── */
     async function loadDevices() {
       try {
-        const resp = await fetch('/devices');
+        const resp = await apiFetch('/devices');
         const data = await resp.json();
         const devices = data.devices || [];
         deviceSelect.innerHTML = '';
@@ -986,7 +1030,7 @@
       if (wav) body.wav = wav;
       else body.device = deviceSelect.value;
 
-      const resp = await fetch('/control', {
+      const resp = await apiFetch('/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -1001,7 +1045,7 @@
     });
 
     btnStop.addEventListener('click', async () => {
-      await fetch('/control', {
+      await apiFetch('/control', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'stop' }),

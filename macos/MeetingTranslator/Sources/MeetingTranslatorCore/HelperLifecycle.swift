@@ -9,8 +9,6 @@ public enum HelperFailure: Equatable, Sendable {
     case exited(code: Int32, stderrTail: String)
     /// The server could not bind its port.
     case portInUse(port: Int)
-    /// Something that is not MimiVox answers on the pinned port.
-    case foreignServer(port: Int)
 
     /// One short line for the UI.
     public var summary: String {
@@ -23,8 +21,6 @@ public enum HelperFailure: Equatable, Sendable {
             return "Server exited with code \(code)\(detail)"
         case .portInUse(let port):
             return "Port \(port) is already in use"
-        case .foreignServer(let port):
-            return "Port \(port) is used by another program, not MimiVox"
         }
     }
 }
@@ -36,24 +32,11 @@ public enum HelperPhase: Equatable, Sendable {
     case failed(HelperFailure)
 }
 
-/// What answers on a port.
-public enum HelperProbeResult: Equatable, Sendable {
-    /// `/api/status` decoded as a MimiVox status.
-    case mimivox
-    /// Something answered HTTP, but not as MimiVox.
-    case foreign
-    /// Nothing answered.
-    case unreachable
-}
-
 /// Owns the helper server process and its lifecycle phase.
 ///
-/// `start()` converges to `ready` or `failed`: it reuses a MimiVox server on a
-/// pinned port, otherwise launches one and waits for as long as the process
-/// lives. Under `.automatic` it retries on a new free port when the bind fails.
+/// Launches a helper and checks its authenticated status. Automatic mode retries if a port is busy.
 public final class HelperSupervisor: @unchecked Sendable {
     public static let maxPortAttempts = 3
-    static let maxLogBytes = 5 * 1024 * 1024
 
     public let configuration: HelperConfiguration
     /// Called (on an arbitrary thread) after every phase change.
@@ -65,17 +48,16 @@ public final class HelperSupervisor: @unchecked Sendable {
     private let lock = NSLock()
     private var _phase: HelperPhase = .idle
     private var process: Process?
+    private var connectedClient: MeetingTranslatorAPIClient?
     private var nextPort: Int
-    private let probe: @Sendable (URL) async -> HelperProbeResult
+    private let probe: (@Sendable (URL) async -> Bool)?
     private let pickPort: @Sendable () -> Int?
     private let parentPID: Int32
     private let pollInterval: Duration
 
     public init(
         configuration: HelperConfiguration,
-        probe: @escaping @Sendable (URL) async -> HelperProbeResult = {
-            await HelperSupervisor.probeStatus(baseURL: $0)
-        },
+        probe: (@Sendable (URL) async -> Bool)? = nil,
         pickPort: @escaping @Sendable () -> Int? = HelperSupervisor.freeLoopbackPort,
         parentPID: Int32 = getpid(),
         pollInterval: Duration = .milliseconds(300)
@@ -97,40 +79,35 @@ public final class HelperSupervisor: @unchecked Sendable {
         lock.withLock { _phase }
     }
 
-    /// The port the next start uses, so API clients can be built before it.
     public var plannedPort: Int {
         lock.withLock { nextPort }
     }
 
-    /// Converges to `.ready` or `.failed`. Restarts a failed or stopped helper;
-    /// a ready one is left alone.
+    public var client: MeetingTranslatorAPIClient? {
+        lock.withLock { connectedClient }
+    }
+
     public func start() async -> HelperPhase {
         if case .ready = phase {
             return phase
         }
         stop()
-        switch configuration.portPolicy {
-        case .fixed(let port):
-            switch await probe(configuration.baseURL(port: port)) {
-            case .mimivox:
-                return setPhase(.ready(port: port))
-            case .foreign:
-                return setPhase(.failed(.foreignServer(port: port)))
-            case .unreachable:
-                return setPhase(await launch(port: port))
-            }
-        case .automatic:
-            var result = HelperPhase.idle
-            for attempt in 1...Self.maxPortAttempts {
-                result = await launch(port: plannedPort)
-                guard case .failed(.portInUse) = result, attempt < Self.maxPortAttempts else {
-                    break
-                }
-                let fresh = pickPort() ?? 0
-                lock.withLock { nextPort = fresh }
-            }
-            return setPhase(result)
+        do {
+            try resetLog()
+        } catch {
+            return setPhase(.failed(.launch(error.localizedDescription)))
         }
+        let attempts = configuration.portPolicy == .automatic ? Self.maxPortAttempts : 1
+        for attempt in 1...attempts {
+            let result = await launch(port: plannedPort)
+            if case .ready = result { return result }
+            guard case .failed(.portInUse) = result, attempt < attempts else {
+                return setPhase(result)
+            }
+            let fresh = pickPort() ?? 0
+            lock.withLock { nextPort = fresh }
+        }
+        return setPhase(.idle)
     }
 
     /// Terminates the process this supervisor owns. Idempotent.
@@ -138,6 +115,7 @@ public final class HelperSupervisor: @unchecked Sendable {
         let owned: Process? = lock.withLock {
             let owned = process
             process = nil
+            connectedClient = nil
             return owned
         }
         if let owned, owned.isRunning {
@@ -170,10 +148,21 @@ public final class HelperSupervisor: @unchecked Sendable {
             return .failed(.launch("no free loopback port"))
         }
         setPhase(.starting(port: port))
+        let connection: HelperConnection
+        do {
+            connection = try HelperConnection()
+        } catch {
+            return .failed(.launch("Could not create the helper TLS identity. \(error.localizedDescription)"))
+        }
+
+        let client = connection.client(baseURL: configuration.baseURL(port: port))
         let process = makeProcess(port: port)
+        let input = Pipe()
+        process.standardInput = input
         let logOffset: UInt64
         do {
-            let log = try openLog()
+            let log = try FileHandle(forWritingTo: configuration.logURL)
+            defer { try? log.close() }
             logOffset = try log.seekToEnd()
             process.standardOutput = log
             process.standardError = log
@@ -181,8 +170,9 @@ public final class HelperSupervisor: @unchecked Sendable {
                 self?.processExited(exited, logOffset: logOffset)
             }
             try process.run()
-            try? log.close()
+            try connection.writeCredentials(to: input.fileHandleForWriting)
         } catch {
+            if process.isRunning { process.terminate() }
             return .failed(.launch(error.localizedDescription))
         }
         lock.withLock { self.process = process }
@@ -192,8 +182,24 @@ public final class HelperSupervisor: @unchecked Sendable {
                 stop()
                 return .idle
             }
-            if await probe(configuration.baseURL(port: port)) == .mimivox {
-                return .ready(port: port)
+            let ready: Bool
+            if let probe {
+                ready = await probe(client.baseURL)
+            } else {
+                ready = (try? await client.status()) != nil
+            }
+            if ready {
+                let next = HelperPhase.ready(port: port)
+                let ownsProcess = lock.withLock {
+                    guard self.process === process, process.isRunning else { return false }
+                    connectedClient = client
+                    _phase = next
+                    return true
+                }
+                if ownsProcess {
+                    onPhaseChange?(next)
+                    return next
+                }
             }
             try? await Task.sleep(for: pollInterval)
         }
@@ -208,6 +214,7 @@ public final class HelperSupervisor: @unchecked Sendable {
         let wasOwnedAndReady: Bool = lock.withLock {
             guard process === exited, case .ready = _phase else { return false }
             process = nil
+            connectedClient = nil
             return true
         }
         if wasOwnedAndReady, case .ready(let port) = phase {
@@ -230,16 +237,12 @@ public final class HelperSupervisor: @unchecked Sendable {
         return next
     }
 
-    /// Opens the log for appending, truncating it first when it grew too large.
-    private func openLog() throws -> FileHandle {
+    private func resetLog() throws {
         let fm = FileManager.default
         let url = configuration.logURL
         try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let size = (try? fm.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        if !fm.fileExists(atPath: url.path) || size > Self.maxLogBytes {
-            fm.createFile(atPath: url.path, contents: nil)
-        }
-        return try FileHandle(forWritingTo: url)
+        try Data().write(to: url, options: .atomic)
+        try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
     }
 
     /// Last few non-empty lines written to `url` after `offset`.
@@ -256,20 +259,6 @@ public final class HelperSupervisor: @unchecked Sendable {
             .filter { !$0.isEmpty }
             .suffix(lines)
             .joined(separator: "\n")
-    }
-
-    public static func probeStatus(
-        baseURL: URL,
-        transport: any HTTPTransport = URLSession.shared
-    ) async -> HelperProbeResult {
-        do {
-            _ = try await MeetingTranslatorAPIClient(baseURL: baseURL, transport: transport).status()
-            return .mimivox
-        } catch is URLError {
-            return .unreachable
-        } catch {
-            return .foreign
-        }
     }
 
     /// A port the kernel reports free on 127.0.0.1, or nil.

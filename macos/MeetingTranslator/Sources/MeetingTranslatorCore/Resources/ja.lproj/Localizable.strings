@@ -308,10 +308,11 @@
 "Access token" = "アクセストークン";
 "Optional" = "任意";
 "Apply after the meeting ends. It restarts the helper." = "会議の終了後に適用してください。ヘルパーを再起動します。";
-"Set by your organization. A Hugging Face mirror, such as Artifactory or Nexus. The token is only sent to this address." = "組織によって設定されています。ArtifactoryやNexusなどのHugging Faceミラーです。トークンはこのアドレスにのみ送信します。";
-"This copy of MimiVox was built to download from this mirror. Enter another address to override it." = "このMimiVoxは、このミラーからダウンロードするようにビルドされています。別のアドレスを入力すると変更できます。";
-"Leave empty for huggingface.co, or enter a Hugging Face mirror such as Artifactory or Nexus. The token is only sent to that mirror." = "空欄の場合はhuggingface.coを使います。ArtifactoryやNexusなどのHugging Faceミラーを入力することもできます。トークンはミラーにのみ送信します。";
+"Set by your organization. Use an HTTPS mirror to send an access token. HTTP mirrors work without a token." = "組織によって設定されています。アクセストークンを送るには、HTTPSのミラーを使います。HTTPのミラーはトークンなしで使えます。";
+"This copy of MimiVox was built to download from this mirror. Enter another address to override it. Use HTTPS for an access token." = "このMimiVoxは、このミラーからダウンロードするようにビルドされています。別のアドレスを入力すると変更できます。アクセストークンを使うにはHTTPSが必要です。";
+"Leave empty for huggingface.co, or enter a Hugging Face mirror. Use HTTPS to send an access token. HTTP mirrors work without a token." = "空欄の場合はhuggingface.coを使います。Hugging Faceミラーを入力することもできます。アクセストークンを送るにはHTTPSを使います。HTTPのミラーはトークンなしで使えます。";
 "Enter an address that starts with https:// or http://." = "https://またはhttp://で始まるアドレスを入力してください。";
+"An HTTPS address is required to use an access token." = "アクセストークンを使うにはHTTPSアドレスが必要です。";
 "Not a valid address" = "有効なアドレスではありません";
 "Access denied (%@). Check the token." = "アクセスが拒否されました (%@)。トークンを確認してください。";
 "Translation model not found on this mirror (404)." = "このミラーに翻訳モデルがありません (404)。";
