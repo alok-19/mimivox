@@ -84,7 +84,7 @@ uv run mimivox meeting.wav --glossary terms.csv        # with a glossary
 ```
 audio ─▶ Silero VAD ─▶ mlx-whisper ─▶ CAT-Translate / Qwen ─▶ captions
                                                    │
-                       FastAPI server (src/mimivox) ┴─▶ macOS app · web UI · terminal
+                       FastAPI server(src/mimivox) ┴─▶ macOS app · web UI · terminal
 ```
 
 The SwiftUI app is only a client. It starts the Python server on a free local port and talks
