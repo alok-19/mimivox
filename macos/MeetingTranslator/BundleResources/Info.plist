@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>MimiVox</string>
+    <key>CFBundleDisplayName</key>
+    <string>MimiVox</string>
+    <key>CFBundleExecutable</key>
+    <string>MeetingTranslator</string>
+    <key>CFBundleIdentifier</key>
+    <string>local.meeting-translator.swiftui.preview</string>
+    <key>CFBundleIconFile</key>
+    <string>MeetingTranslator</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1.1.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.productivity</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>MimiVox needs microphone access to capture local meeting audio for transcription.</string>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>MimiVox records the audio your Mac plays (e.g. a Zoom call) to transcribe and translate it on-device.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>MimiVox runs a local helper on loopback to transcribe and translate on-device.</string>
+</dict>
+</plist>

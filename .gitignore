@@ -1,0 +1,33 @@
+# Runtime data
+data/
+
+# Transcripts (legacy root-level)
+transcript_*
+transcript_*.md
+*.jsonl
+*.log
+
+# Python
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
+.DS_Store
+.agent
+
+# Build artifacts
+build/
+dist/
+
+# Swift
+macos/**/.build/
+macos/**/.swiftpm/
+macos/**/DerivedData/
+
+# Stray local artifacts (defense against recurrence)
+/path/
+server.log

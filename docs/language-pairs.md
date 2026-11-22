@@ -1,0 +1,31 @@
+# Language pairs
+
+A session has one `LanguagePair` (`src/mimivox/languages.py`): `source_lang` is what Whisper
+hears, `target_lang` is the caption language. Settings persist both codes; `/api/session/start`
+(and the web `/control` start) accept `source_lang` / `target_lang` to override them.
+
+Supported: `ja-en` (default), `zh-en`, `ko-en`, `en-ja`. Anything else is a 400.
+
+| Stage | ja-en | other pairs |
+|---|---|---|
+| Whisper | `language="ja"`, `。、` prompt | `language=<source>`, per-language prompt base |
+| Translator | CAT-Translate (unchanged) | Qwen3-4B-Instruct (the meeting-notes model, `notes_llm`) |
+| Glossary terms | yes | yes (term sources bias Whisper, targets are substituted before translation) |
+| Glossary ASR fixes | yes | no effect (their Japanese sources never match other text) |
+| Context translation | yes | yes (last 3 lines as chat turns, echo guard retries without context) |
+| Confidence flags | yes | yes (Qwen token logprobs; thresholds are CAT-tuned, not re-tuned) |
+| Split-sentence revision | yes | off (the heuristics read Japanese endings) |
+| Partial-EN preview | optional | off |
+| English passthrough | yes | n/a |
+
+The non-JA translator needs the optional model download (Settings → Models). Starting such a
+pair without it fails fast with a message instead of letting mlx_lm download it silently.
+The model stays resident while a session uses it (`notes_llm.pin`), so the notes idle timer
+cannot evict it mid-meeting.
+
+Wire format: events and log rows keep their `ja` / `en` keys. For a pair `ja` holds the source
+text and `en` the translation, and `session_start` carries `source_lang` / `target_lang`.
+
+Eval: `scripts/eval/fetch_fleurs.py --langs cmn_hans_cn ko_kr --limit 30` and
+`--langs ja_jp en_us --audio-langs en_us --limit 30`, then
+`run_eval.py --pair zh-en|ko-en|en-ja --clips 30`. See `docs/eval.md`.

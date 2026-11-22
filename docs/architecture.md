@@ -1,0 +1,311 @@
+# MimiVox Architecture
+
+Fully on-device JA→EN speech translation running on Apple Silicon via MLX.
+
+## Table of Contents
+
+1. [Simplified Overview](#1-simplified-overview)
+2. [Detailed Streaming Pipeline](#2-detailed-streaming-pipeline)
+3. [Component Reference](#3-component-reference)
+   - 3.1 [Audio Capture](#31-audio-capture)
+   - 3.2 [VAD Segmentation (Silero)](#32-vad-segmentation-silero)
+   - 3.3 [ASR (mlx-whisper)](#33-asr-mlx-whisper)
+   - 3.4 [Translation (CAT-Translate)](#34-translation-cat-translate)
+   - 3.5 [Output Layers](#35-output-layers)
+4. [Web UI & SSE Protocol](#4-web-ui--sse-protocol)
+   - 4.1 [Browser Layer](#41-browser-layer)
+   - 4.2 [Event Types](#42-event-types)
+5. [Performance & Latency](#5-performance--latency)
+   - 5.1 [Timing Breakdown](#51-timing-breakdown)
+   - 5.2 [Optimization Notes](#52-optimization-notes)
+6. [Post-Processing Utilities](#6-post-processing-utilities)
+7. [Project Layout](#7-project-layout)
+
+---
+
+## 1. Simplified Overview
+
+### Mermaid Flowchart
+
+```mermaid
+flowchart LR
+    A[Audio Input<br/>WAV / Mic] --> B[Ring Buffer]
+    B --> C[Silero VAD]
+    C --> D[mlx-whisper ASR]
+    D -->|Partial Stream| E[Terminal Preview]
+    D -->|Full Utterance| F[CAT-Translate]
+    F --> G[Final Output]
+    G --> H[JSONL Log]
+    G --> I[Web UI SSE]
+```
+
+### ASCII Flow
+
+```
+Audio Input (WAV / Mic) → Ring Buffer → Silero VAD
+                                          │
+                                          ▼
+                                    Utterance Chunk
+                                          │
+                                          ▼
+                                    mlx-whisper ASR
+                                          │
+                    ┌─────────────────────┼─────────────────────┐
+                    │                     │                     │
+                    ▼                     ▼                     ▼
+              Terminal (ANSI)      Web UI (SSE)          Full Utterance
+              Partial Preview      Partial Event                │
+                                                                ▼
+                                                        CAT-Translate
+                                                                │
+                              ┌─────────────────────────────────┼─────────────────────────────────┐
+                              │                                 │                                 │
+                              ▼                                 ▼                                 ▼
+                        Terminal (ANSI)                   JSONL Log                        Web UI (SSE)
+                        (Final JA/EN)                     (ND-JSON)                        (Final + Tokens)
+```
+
+---
+
+## 2. Detailed Streaming Pipeline
+
+```
+┌──────────────────────────────────────────────────────────────────────────────────┐
+│                    MimiVox — Real-time JA→EN Meeting Translator                  │
+│                    Fully on-device · Apple Silicon · MLX                         │
+└──────────────────────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ AUDIO INPUT LAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  WAV file or live microphone
+  │
+  ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ Ring Buffer (asyncio Queue)                                                     │
+│   sample_rate = 16_000                                                          │
+│   channels    = mono                                                            │
+│   dtype       = float32                                                         │
+└─────────────────────────────────────────────────────────────────────────────────┘
+  │
+  ▼
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ VAD SEGMENTATION ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                         ▼
+              ┌──────────────────────┐
+              │      SileroVAD       │  VAD_THRESHOLD      = 0.35
+              │  (onnxruntime)       │  VAD_MIN_SILENCE_MS = 700
+              │  frame-by-frame      │  VAD_SPEECH_PAD_MS  = 120
+              │  emit on silence     │  VAD_MIN_SPEECH_MS  = 250
+              └──────────┬───────────┘  MAX_CHUNK_S        = 15
+                         │
+                         ▼  utterance chunk (padded speech)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ ASR + TRANSLATION CORE ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│ mlx_whisper.transcribe(                                                         │
+│   model   = large-v3-turbo-q8,   language = "ja"                                │
+│   verbose = True      ← emits "[MM:SS.mmm → MM:SS.mmm]  text" per segment       │
+│   no_speech_threshold = 0.8,     condition_on_previous_text = False             │
+│ )                                                                               │
+│      │                                                                          │
+│      │  per decoded segment (fires mid-inference)                               │
+│      ▼                                                                          │
+│  ┌────────────────────────────┐    ┌─────────────────────────────────────────┐  │
+│  │      PARTIAL PREVIEW       │    │         FINAL TRANSLATION               │  │
+│  │  (fires every segment)     │    │  (fires on utterance end)               │  │
+│  ├────────────────────────────┤    ├─────────────────────────────────────────┤  │
+│  │ _partial_accum += seg_text │    │  normalize_punctuation(text)            │  │
+│  │ ANSI cursor-up + erase     │    │  apply_glossary(text)                   │  │
+│  │ print dim "⟳  {accum}"     │    │                                         │  │
+│  │ sse_broadcast(partial)     │    │  _is_mostly_english()? ──→ skip CAT     │  │
+│  │                            │    │         │                               │  │
+│  │                            │    │         ▼                               │  │
+│  │                            │    │  async with MLX lock:                   │  │
+│  │                            │    │    mlx_lm.stream_generate(CAT-1.4b-q4)  │  │
+│  │                            │    │    on_token → sse_broadcast(en_token)   │  │
+│  │                            │    │                                         │  │
+│  │                            │    │  clean_cat_output()                     │  │
+│  │                            │    │  erase accumulated partial line (ANSI)  │  │
+│  │                            │    │  print "[MM:SS] JA: … / EN: …"          │  │
+│  │                            │    │  sse_broadcast(final)                   │  │
+│  └────────────────────────────┘    └─────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ OUTPUT LAYERS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Terminal (ANSI)              JSONL log                  Web UI (SSE events)
+  ──────────────────────────   ───────────────────────    ─────────────────────────
+  ⟳  partial preview line      logs/<stem>_v3_log.jsonl   {kind: "session_start"}
+  [MM:SS] JA: <japanese>       {audio_ts,                 {kind: "partial",
+  [MM:SS] EN: <english>         wall_time,                  ts, ja}
+  ASR / CAT / total latency     ja, en,                   {kind: "en_token",
+  Summary + per-chunk stats     partial_ja,                 token}
+                                translate_ms,             {kind: "final",
+                                total_ms}                   ts, ja, en,
+                                                           translate_ms,
+                                                           total_ms}
+                                                          {kind: "session_end"}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ WEB UI BROWSER LAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Browser ←── SSE /stream ←── FastAPI (mimivox-server)
+              │
+              ├── session_start  →  clear transcript panel
+              ├── partial        →  show dim preview line
+              ├── en_token       →  stream English tokens live
+              ├── final          →  replace preview with formatted JA/EN block
+              └── session_end    →  show summary, enable export
+```
+
+---
+
+## 3. Component Reference
+
+### 3.1 Audio Capture
+
+Audio is captured from either a WAV file or the live microphone and placed into an asyncio queue as 16 kHz mono float32 PCM.
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `sample_rate` | 16,000 Hz | Target sample rate for all processing |
+| `channels` | mono | Single-channel audio |
+| `dtype` | float32 | Internal buffer format |
+
+### 3.2 VAD Segmentation (Silero)
+
+Silero VAD detects speech boundaries and emits complete utterance chunks for downstream processing.
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `VAD_THRESHOLD` | 0.35 | Speech detection threshold |
+| `VAD_MIN_SILENCE_MS` | 700 ms | Minimum silence to split utterance |
+| `VAD_SPEECH_PAD_MS` | 120 ms | Padding applied to start/end of detected speech |
+| `VAD_MIN_SPEECH_MS` | 250 ms | Consecutive speech needed to open an utterance |
+| `MAX_CHUNK_S` | 15 s | Hard maximum chunk duration |
+
+Defaults live in `config.py`. The balanced and quality profiles raise the silence and chunk limits, and live mic sessions tighten silence to 400 ms and padding to 80 ms (`apply_live_vad_overrides`).
+
+### 3.3 ASR (mlx-whisper)
+
+Japanese transcription using a quantized Whisper model running on MLX.
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `model` | `LibraxisAI/whisper-large-v3-turbo-mlx-q8` | Quantized Whisper large-v3-turbo |
+| `language` | `ja` | Force Japanese language detection |
+| `no_speech_threshold` | 0.8 | Filter out non-speech segments |
+| `condition_on_previous_text` | `False` | Prevent error propagation across utterances |
+| `verbose` | `True` | Emit per-segment timestamps during inference |
+
+**Key behavior:** `transcribe()` fires segments mid-inference, enabling the partial preview stream before the full utterance is complete.
+
+### 3.4 Translation (CAT-Translate)
+
+JA→EN translation using a quantized CAT-Translate model. Runs sequentially with ASR under a shared GPU lock.
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `model` | `hotchpotch/CAT-Translate-1.4b-mlx-q4` | Quantized CAT-Translate 1.4B |
+| `_models.cat_lock` | asyncio Lock | Same lock object as `_models.asr_lock`; serializes GPU access |
+
+**Key behavior:**
+- Translation only runs after the full ASR utterance is complete
+- Streaming generation via `mlx_lm.stream_generate()` emits tokens in real-time
+- `_is_mostly_english()` detects English code-switching and skips translation
+
+### 3.5 Output Layers
+
+Three simultaneous output targets for every utterance:
+
+| Layer | Format | Description |
+|-------|--------|-------------|
+| **Terminal** | ANSI | Cursor-up erase for partials; formatted `[MM:SS] JA: … / EN: …` for finals |
+| **JSONL Log** | ND-JSON | One JSON object per event; written to `logs/<stem>_v3_log.jsonl` |
+| **Web UI** | SSE | Server-Sent Events over HTTP for browser-based real-time display |
+
+---
+
+## 4. Web UI & SSE Protocol
+
+### 4.1 Browser Layer
+
+The web UI is served by a FastAPI application (`mimivox-server`). The browser connects to the `/stream` SSE endpoint and receives a stream of JSON events. The macOS app talks to the same process through the `/api/*` router in `api_adapter.py` and its own `/api/events` stream.
+
+```
+Browser ←── SSE /stream ←── FastAPI (src/mimivox/server.py)
+              │
+              └── Static assets served from src/mimivox/static/
+```
+
+### 4.2 Event Types
+
+| Event | Direction | Payload | Description |
+|-------|-----------|---------|-------------|
+| `session_start` | Server → Client | `{}` | New translation session began |
+| `partial` | Server → Client | `{ts, ja}` | ASR partial preview (dim text) |
+| `en_token` | Server → Client | `{token}` | Streaming English token from CAT-Translate |
+| `final` | Server → Client | `{ts, ja, en, translate_ms, total_ms}` | Completed utterance with timing |
+| `session_end` | Server → Client | `{}` | Session closed; summary available |
+
+**Client-side handling:**
+- `session_start` → Clear transcript panel
+- `partial` → Show dim preview line
+- `en_token` → Append tokens to a live translation area
+- `final` → Replace preview with a formatted JA/EN block
+- `session_end` → Show latency summary, enable transcript export
+
+---
+
+## 5. Performance & Latency
+
+### 5.1 Timing Breakdown
+
+| Metric | Definition | Typical Range |
+|--------|-----------|---------------|
+| **ASR Latency** | Time from audio chunk end to final ASR text | ~100–400 ms |
+| **Translate Latency** | Time from ASR final to CAT-Translate final | ~200–800 ms |
+| **Total Latency** | End-to-end per utterance | ~300 ms – 1.2 s |
+| **GPU Lock Wait** | Time ASR or CAT waits for the MLX lock | Varies with utterance density |
+
+> **Note:** All times are approximate and depend on utterance length, model quantization, and system load.
+
+### 5.2 Optimization Notes
+
+| Technique | Impact |
+|-----------|--------|
+| **Partial Previews** | Reduces perceived latency by showing ASR results immediately |
+| **`condition_on_previous_text = False`** | Prevents error propagation from previous utterances |
+| **`_is_mostly_english()`** | Skips CAT-Translate for English speech, saving GPU time and avoiding hallucinations |
+| **`no_speech_threshold = 0.8`** | Aggressively filters non-speech, reducing unnecessary translation |
+| **Shared MLX lock** | Serializes GPU access; prevents OOM and keeps inference deterministic |
+| **Streaming `en_token`** | English tokens arrive incrementally, improving perceived responsiveness |
+
+---
+
+## 6. Post-Processing Utilities
+
+| Function | File | Purpose |
+|----------|------|---------|
+| `normalize_punctuation()` | `translate.py` | Appends `。` if a sentence ends without punctuation |
+| `apply_glossary()` | `translate.py` | Fixes known mis-transcriptions using a hardcoded glossary |
+| `_is_mostly_english()` | `translate.py` | Detects English code-switching; skips CAT to avoid prompt-leak hallucinations |
+| `clean_cat_output()` | `translate.py` | Strips prompt-leak artifacts and stray tokens from CAT output |
+
+---
+
+## 7. Project Layout
+
+```
+src/mimivox/      — Python package (pipeline, models, session storage, HTTP API)
+  pipeline.py     — async orchestration (workers, queues, sessions)
+  server.py       — FastAPI app: web UI routes plus the /api router
+  api_adapter.py  — /api/* endpoints used by the macOS app
+  static/         — web UI assets
+macos/            — native SwiftUI app (see macos/README.md)
+scripts/          — build, fixture, eval, and calibration tools
+tests/            — pytest suite
+docs/             — architecture and feature notes
+data/             — runtime data (gitignored)
+```
