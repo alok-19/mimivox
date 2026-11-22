@@ -222,12 +222,25 @@ def test_flashcard_exports_include_both_directions_and_examples():
 
 
 def test_flashcard_anki_guid_is_stable_and_distinct_for_shared_meanings():
-    first = {"word": "届く", "reading": "とどく", "gloss": "to arrive", "example_ja": "", "example_en": ""}
+    first = {
+        "word": "届く",
+        "reading": "とどく",
+        "gloss": "to arrive",
+        "example_ja": "",
+        "example_en": "",
+    }
     second = {**first, "word": "着く", "reading": "つく"}
     again = learning.render_flashcards_anki([first, second])
     rows = list(csv.reader(io.StringIO(again), delimiter="\t"))[7:]
     assert len(rows) == 2 and rows[0][0] != rows[1][0]
-    assert rows == list(csv.reader(io.StringIO(learning.render_flashcards_anki([first, second])), delimiter="\t"))[7:]
+    assert (
+        rows
+        == list(
+            csv.reader(
+                io.StringIO(learning.render_flashcards_anki([first, second])), delimiter="\t"
+            )
+        )[7:]
+    )
 
 
 @pytest.fixture

@@ -18,8 +18,8 @@ with ``base`` and a lexicon hit.
 from __future__ import annotations
 
 import csv
-import hashlib
 import gzip
+import hashlib
 import io
 import re
 import threading

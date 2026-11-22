@@ -4,9 +4,10 @@ Measures the real pipeline on public human speech (Google FLEURS ja_jp dev,
 CC-BY-4.0) so a feature can be judged by numbers. Rerun it before and after a
 change and compare the two `report.json` files.
 
+`make eval` runs all three steps below with the defaults.
+
 ```bash
-export PYTHONPATH=src
-PY=.venv/bin/python
+PY="uv run python"
 $PY scripts/eval/fetch_fleurs.py                  # once; --langs ja_jp zh_cn ko_kr for more
 $PY scripts/eval/build_meetings.py -n 5           # data/eval/meetings/meeting-N.{wav,json}
 $PY scripts/eval/run_eval.py --clips 100          # loads Whisper + CAT (~20 min)

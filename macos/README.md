@@ -19,8 +19,7 @@ Requirements: macOS 14+ (14.2+ for built-in system audio), Apple Silicon, and
 SDK); the Command Line Tools alone cannot compile SwiftUI's macros.
 
 ```bash
-scripts/build_app.sh        # from the repo root -> dist/MimiVox.app
-open dist/MimiVox.app
+make app        # from the repo root: builds dist/MimiVox.app and opens it
 ```
 
 The script builds the client in release mode, copies a uv-managed CPython 3.12 into
@@ -46,15 +45,15 @@ server. Models stay in the Hugging Face cache and are downloaded on first use.
 ## Run from source (development)
 
 ```bash
-mimivox-server                                              # terminal 1, from the repo root
-cd macos/MeetingTranslator && swift run MeetingTranslator   # terminal 2
+make server     # terminal 1, from the repo root
+make app-dev    # terminal 2
 ```
 
 Without the bundled Python, the app connects to the server on 8765 (or `MIMIVOX_PORT`), and
 if none answers it tries `uv run python -m mimivox.server`. Starting the server yourself warms the models first.
 Data then lives in the repo's `data/`.
 
-Checks: `swift build && swift run MeetingTranslatorCoreChecks`. Style: `swift format lint -r Sources`.
+Checks: `make swift-check`. Style: `swift format lint -r Sources`.
 
 ## Using it
 

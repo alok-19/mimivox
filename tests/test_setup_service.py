@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from mimivox import setup_service
 from mimivox.api_adapter import api_state, router
-from mimivox.settings_store import default_settings
 from mimivox.setup_service import (
     Downloading,
     Failed,
