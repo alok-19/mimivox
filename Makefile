@@ -12,7 +12,7 @@ setup: ## Install Python deps (incl. dev tools) into .venv
 	@command -v ffmpeg >/dev/null || echo "note: ffmpeg not found (brew install ffmpeg); needed for non-WAV input"
 	uv sync --extra dev
 
-server: ## Run the authenticated server and web UI on loopback
+server: ## Run the local API (requires MIMIVOX_API_TOKEN)
 	$(UV) mimivox-server
 
 app: ## Build dist/MimiVox.app and open it (needs Xcode 26+)

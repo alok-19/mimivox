@@ -12,8 +12,8 @@ Fully on-device JA→EN speech translation running on Apple Silicon via MLX.
    - 3.3 [ASR (mlx-whisper)](#33-asr-mlx-whisper)
    - 3.4 [Translation (CAT-Translate)](#34-translation-cat-translate)
    - 3.5 [Output Layers](#35-output-layers)
-4. [Web UI & SSE Protocol](#4-web-ui--sse-protocol)
-   - 4.1 [Browser Layer](#41-browser-layer)
+4. [Helper API](#4-helper-api)
+   - 4.1 [Connection](#41-connection)
    - 4.2 [Event Types](#42-event-types)
 5. [Performance & Latency](#5-performance--latency)
    - 5.1 [Timing Breakdown](#51-timing-breakdown)
@@ -36,7 +36,7 @@ flowchart LR
     D -->|Full Utterance| F[CAT-Translate]
     F --> G[Final Output]
     G --> H[JSONL Log]
-    G --> I[Web UI SSE]
+    G --> I[Mac app SSE]
 ```
 
 ### ASCII Flow
@@ -53,7 +53,7 @@ Audio Input (WAV / Mic) → Ring Buffer → Silero VAD
                     ┌─────────────────────┼─────────────────────┐
                     │                     │                     │
                     ▼                     ▼                     ▼
-              Terminal (ANSI)      Web UI (SSE)          Full Utterance
+              Terminal (ANSI)      Mac app (SSE)          Full Utterance
               Partial Preview      Partial Event                │
                                                                 ▼
                                                         CAT-Translate
@@ -61,7 +61,7 @@ Audio Input (WAV / Mic) → Ring Buffer → Silero VAD
                               ┌─────────────────────────────────┼─────────────────────────────────┐
                               │                                 │                                 │
                               ▼                                 ▼                                 ▼
-                        Terminal (ANSI)                   JSONL Log                        Web UI (SSE)
+                        Terminal (ANSI)                   JSONL Log                        Mac app (SSE)
                         (Final JA/EN)                     (ND-JSON)                        (Final + Tokens)
 ```
 
@@ -135,7 +135,7 @@ Audio Input (WAV / Mic) → Ring Buffer → Silero VAD
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ OUTPUT LAYERS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Terminal (ANSI)              JSONL log                  Web UI (SSE events)
+  Terminal (ANSI)              JSONL log                  Pipeline events
   ──────────────────────────   ───────────────────────    ─────────────────────────
   ⟳  partial preview line      logs/<stem>_v3_log.jsonl   {kind: "session_start"}
   [MM:SS] JA: <japanese>       {audio_ts,                 {kind: "partial",
@@ -148,15 +148,6 @@ Audio Input (WAV / Mic) → Ring Buffer → Silero VAD
                                                            total_ms}
                                                           {kind: "session_end"}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ WEB UI BROWSER LAYER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-  Browser ←── SSE /stream ←── FastAPI (mimivox-server)
-              │
-              ├── session_start  →  clear transcript panel
-              ├── partial        →  show dim preview line
-              ├── en_token       →  stream English tokens live
-              ├── final          →  replace preview with formatted JA/EN block
-              └── session_end    →  show summary, enable export
 ```
 
 ---
@@ -217,44 +208,32 @@ JA→EN translation using a quantized CAT-Translate model. Runs sequentially wit
 
 ### 3.5 Output Layers
 
-Three simultaneous output targets for every utterance:
+MimiVox can send utterances to these outputs:
 
 | Layer | Format | Description |
 |-------|--------|-------------|
 | **Terminal** | ANSI | Cursor-up erase for partials; formatted `[MM:SS] JA: … / EN: …` for finals |
 | **JSONL Log** | ND-JSON | One JSON object per event; written to `logs/<stem>_v3_log.jsonl` |
-| **Web UI** | SSE | Server-Sent Events over HTTP for browser-based real-time display |
+| **Mac app** | SSE | The helper sends live caption and status events to the app |
 
 ---
 
-## 4. Web UI & SSE Protocol
+## 4. Helper API
 
-### 4.1 Browser Layer
+### 4.1 Connection
 
-The standalone FastAPI server (`mimivox-server`) serves the web UI. The browser sends a bearer token to the `/stream` SSE endpoint and receives JSON events. The macOS app starts its own helper. The app checks the helper's TLS certificate and uses a separate token for the `/api/*` routes and the `/api/events` stream.
-
-```
-Browser ←── SSE /stream ←── FastAPI (src/mimivox/server.py)
-              │
-              └── Static assets served from src/mimivox/static/
-```
+The macOS app starts the Python helper on a loopback port. The app verifies the helper's TLS
+certificate and sends a bearer token with each request. The `/api/*` routes provide session
+control and data. `GET /api/events` streams captions and status with Server-Sent Events.
 
 ### 4.2 Event Types
 
-| Event | Direction | Payload | Description |
-|-------|-----------|---------|-------------|
-| `session_start` | Server → Client | `{}` | New translation session began |
-| `partial` | Server → Client | `{ts, ja}` | ASR partial preview (dim text) |
-| `en_token` | Server → Client | `{token}` | Streaming English token from CAT-Translate |
-| `final` | Server → Client | `{ts, ja, en, translate_ms, total_ms}` | Completed utterance with timing |
-| `session_end` | Server → Client | `{}` | Session closed; summary available |
-
-**Client-side handling:**
-- `session_start` → Clear transcript panel
-- `partial` → Show dim preview line
-- `en_token` → Append tokens to a live translation area
-- `final` → Replace preview with a formatted JA/EN block
-- `session_end` → Show latency summary, enable transcript export
+| Event | Description |
+|-------|-------------|
+| `SessionStartedEvent` | A session starts |
+| `AsrCompletedEvent` | The helper completes an utterance transcription |
+| `TranslationCompletedEvent` | The helper completes a translation |
+| `SessionEndedEvent` | A session ends |
 
 ---
 
@@ -300,9 +279,8 @@ Browser ←── SSE /stream ←── FastAPI (src/mimivox/server.py)
 ```
 src/mimivox/      — Python package (pipeline, models, session storage, HTTP API)
   pipeline.py     — async orchestration (workers, queues, sessions)
-  server.py       — FastAPI app: web UI routes plus the /api router
+  server.py       — authenticated local API
   api_adapter.py  — /api/* endpoints used by the macOS app
-  static/         — web UI assets
 macos/            — native SwiftUI app (see macos/README.md)
 scripts/          — build, fixture, eval, and calibration tools
 tests/            — pytest suite

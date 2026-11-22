@@ -54,20 +54,19 @@ xattr -dr com.apple.quarantine /Applications/MimiVox.app
 
 ```bash
 make setup      # install deps into .venv (uv)
-make server     # start the local server and open the printed browser URL
+make app-dev    # run the macOS app with its local helper
 make check      # lint + tests, run before a PR
 ```
 
-The standalone server prints a browser URL with a temporary access token. Open that URL
-on the same Mac and keep it private. The server listens on loopback and requires the token
-for API requests and live events.
+For API development, set `MIMIVOX_API_TOKEN` and run `make server`. The standalone
+server listens on loopback. Send the token in the `Authorization: Bearer` header.
 
 Run `make` to list every command:
 
 | Command | What it does |
 |---|---|
 | `make setup` | Install Python deps and dev tools into `.venv` |
-| `make server` | Run the local server and web UI |
+| `make server` | Run the authenticated local API |
 | `make app-dev` | Run the SwiftUI app and local helper from source |
 | `make app` | Build and open `dist/MimiVox.app` |
 | `make test` / `make lint` / `make fmt` | pytest, ruff check, ruff fix |
@@ -89,7 +88,7 @@ uv run mimivox meeting.wav --glossary terms.csv        # with a glossary
 ```
 audio ─▶ Silero VAD ─▶ mlx-whisper ─▶ CAT-Translate / Qwen ─▶ captions
                                                    │
-                       FastAPI server(src/mimivox) ┴─▶ macOS app · web UI · terminal
+                       FastAPI server(src/mimivox) ┴─▶ macOS app · terminal
 ```
 
 The SwiftUI app starts its own Python helper on a free local port. It checks the helper's
@@ -101,8 +100,7 @@ src/mimivox/      Python package
   pipeline.py       async orchestration (workers, queues, sessions)
   translate.py      CAT-Translate, context, post-processing
   api_adapter.py    /api/* used by the macOS app
-  server.py         FastAPI server and web UI
-  static/           web UI
+  server.py         authenticated local API
 macos/            SwiftUI app
 scripts/          app build, fixtures, eval, diagnostics
 tests/            pytest suite

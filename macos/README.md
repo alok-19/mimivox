@@ -7,9 +7,8 @@ which the app talks to over HTTPS and SSE.
 
 ```
 MimiVox.app ──HTTPS/SSE──▶ mimivox server (own loopback port)
-                            ├─ /api/*     the app's contract (src/mimivox/api_adapter.py)
-                            ├─ /stream    web UI SSE
-                            └─ /control   web UI start/stop
+                            ├─ /api/*        session control and data
+                            └─ /api/events   live captions and status
 ```
 
 ## Run the app

@@ -66,7 +66,6 @@ def main() -> None:
             "mimivox.server",
             "--port",
             str(args.port),
-            "--no-browser-link",
         ],
         env=env,
         stdout=log,
