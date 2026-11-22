@@ -146,13 +146,18 @@ public struct SettingsResponse: Codable, Equatable, Sendable {
 public final class MeetingTranslatorAPIClient: Sendable {
     public let baseURL: URL
     private let transport: any HTTPTransport
+    private let bearerToken: String?
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
 
-    public init(baseURL: URL = URL(string: "http://127.0.0.1:8765/")!, transport: any HTTPTransport = URLSession.shared)
-    {
+    public init(
+        baseURL: URL = URL(string: "http://127.0.0.1:8765/")!,
+        transport: any HTTPTransport = URLSession.shared,
+        bearerToken: String? = nil
+    ) {
         self.baseURL = baseURL
         self.transport = transport
+        self.bearerToken = bearerToken
         self.decoder = JSONDecoder()
         self.encoder = JSONEncoder()
     }
@@ -167,7 +172,10 @@ public final class MeetingTranslatorAPIClient: Sendable {
                 do {
                     var request = try makeRequest(path: "/api/events", method: "GET")
                     request.timeoutInterval = 600
-                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+                    guard let session = transport as? URLSession else {
+                        throw MeetingTranslatorAPIError.invalidResponse
+                    }
+                    let (bytes, response) = try await session.bytes(for: request)
                     guard let http = response as? HTTPURLResponse else {
                         continuation.finish(throwing: MeetingTranslatorAPIError.invalidResponse)
                         return
@@ -433,12 +441,19 @@ public final class MeetingTranslatorAPIClient: Sendable {
     }
 
     public func makeRequest(path: String, method: String, body: Data? = nil) throws -> URLRequest {
-        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL else {
+        guard let url = URL(string: path, relativeTo: baseURL)?.absoluteURL,
+            url.host == baseURL.host, url.port == baseURL.port,
+            url.scheme == baseURL.scheme, url.scheme == "https" || url.scheme == "http",
+            bearerToken == nil || url.scheme == "https"
+        else {
             throw MeetingTranslatorAPIError.invalidBaseURL
         }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "accept")
+        if let bearerToken {
+            request.setValue("Bearer \(bearerToken)", forHTTPHeaderField: "Authorization")
+        }
         // Live start can wait on device open; status stays short.
         if path.contains("/session/start") || path.contains("/session/stop") {
             request.timeoutInterval = 120

@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import secrets
 import subprocess
 import sys
 import threading
@@ -24,13 +25,14 @@ import urllib.request
 from pathlib import Path
 
 
-def call(base: str, path: str, body: dict | None = None, timeout: float = 30) -> dict:
+def call(base: str, path: str, token: str, body: dict | None = None, timeout: float = 30) -> dict:
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(
         base + path, data=data, method="POST" if body is not None else "GET"
     )
     if data:
         req.add_header("content-type", "application/json")
+    req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read() or b"{}")
 
@@ -49,14 +51,23 @@ def main() -> None:
         sys.exit("refusing port 8765")
     args.out.mkdir(parents=True, exist_ok=True)
     base = f"http://127.0.0.1:{args.port}"
+    token = secrets.token_urlsafe(32)
     env = {
         **os.environ,
         "MIMIVOX_DEBUG_DELAY": args.delay,
+        "MIMIVOX_API_TOKEN": token,
         "PYTHONPATH": os.environ.get("PYTHONPATH", "src"),
     }
     log = open(args.out / "server.log", "w")  # noqa: SIM115 - handle outlives Popen; closed in finally
     server = subprocess.Popen(
-        [sys.executable, "-m", "mimivox.server", "--port", str(args.port)],
+        [
+            sys.executable,
+            "-m",
+            "mimivox.server",
+            "--port",
+            str(args.port),
+            "--no-browser-link",
+        ],
         env=env,
         stdout=log,
         stderr=subprocess.STDOUT,
@@ -67,7 +78,7 @@ def main() -> None:
         deadline = time.time() + 300
         while True:
             try:
-                call(base, "/api/status", timeout=3)
+                call(base, "/api/status", token, timeout=3)
                 break
             except Exception:
                 if server.poll() is not None or time.time() > deadline:
@@ -78,7 +89,10 @@ def main() -> None:
 
         def listen() -> None:
             try:
-                with urllib.request.urlopen(base + "/api/events", timeout=600) as resp:
+                request = urllib.request.Request(
+                    base + "/api/events", headers={"Authorization": f"Bearer {token}"}
+                )
+                with urllib.request.urlopen(request, timeout=600) as resp:
                     for raw in resp:
                         line = raw.decode().strip()
                         if line.startswith("data: "):
@@ -90,9 +104,15 @@ def main() -> None:
         call(
             base,
             "/api/settings",
+            token,
             {"replay_duration_seconds": args.seconds, "catch_up_mode": "manual"},
         )
-        started = call(base, "/api/session/start", {"source": str(Path(args.wav).resolve())})
+        started = call(
+            base,
+            "/api/session/start",
+            token,
+            {"source": str(Path(args.wav).resolve())},
+        )
         session_id = started["session_id"]
         print("session", session_id, flush=True)
 
@@ -102,7 +122,7 @@ def main() -> None:
         states_seen: list[str] = []
         end_by = time.time() + args.seconds + 240
         while time.time() < end_by:
-            st = call(base, "/api/status")
+            st = call(base, "/api/status", token)
             lat = st["health"]["latency"]
             t = time.time() - t0
             reason = (lat["reasons"] or [{"message": ""}])[0]["message"]
@@ -113,7 +133,7 @@ def main() -> None:
                 states_seen.append(lat["state"])
             if catch_up is None and lat["catch_up_available"] and not args.no_catch_up:
                 body = {"mode": args.mode} if args.mode else {}
-                catch_up = call(base, "/api/session/catch-up", body)
+                catch_up = call(base, "/api/session/catch-up", token, body)
                 pressed_at = t
                 timeline.append(
                     f"{t:.1f}\tCATCH-UP\t{json.dumps(catch_up['health']['backlog_s'])}\t{catch_up['mode']}\t"
@@ -125,7 +145,7 @@ def main() -> None:
         archived = None
         for _ in range(240):
             try:
-                archived = call(base, f"/api/sessions/{session_id}")
+                archived = call(base, f"/api/sessions/{session_id}", token)
                 break
             except urllib.error.HTTPError as exc:
                 if exc.code != 404:
@@ -138,8 +158,8 @@ def main() -> None:
             for e in archived["events"]
             if e["type"] in ("AsrCompletedEvent", "TranslationCompletedEvent", "CaptionGapEvent")
         ]
-        recovered = call(base, f"/api/sessions/{session_id}/recover", {}, timeout=600)
-        after = call(base, f"/api/sessions/{session_id}")["events"]
+        recovered = call(base, f"/api/sessions/{session_id}/recover", token, {}, timeout=600)
+        after = call(base, f"/api/sessions/{session_id}", token)["events"]
         skipped_before = [
             e for e in before if e["type"] == "CaptionGapEvent" or e.get("translation_skipped")
         ]

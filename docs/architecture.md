@@ -231,7 +231,7 @@ Three simultaneous output targets for every utterance:
 
 ### 4.1 Browser Layer
 
-The web UI is served by a FastAPI application (`mimivox-server`). The browser connects to the `/stream` SSE endpoint and receives a stream of JSON events. The macOS app talks to the same process through the `/api/*` router in `api_adapter.py` and its own `/api/events` stream.
+The standalone FastAPI server (`mimivox-server`) serves the web UI. The browser sends a bearer token to the `/stream` SSE endpoint and receives JSON events. The macOS app starts its own helper. The app checks the helper's TLS certificate and uses a separate token for the `/api/*` routes and the `/api/events` stream.
 
 ```
 Browser ←── SSE /stream ←── FastAPI (src/mimivox/server.py)

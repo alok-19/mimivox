@@ -12,14 +12,14 @@ setup: ## Install Python deps (incl. dev tools) into .venv
 	@command -v ffmpeg >/dev/null || echo "note: ffmpeg not found (brew install ffmpeg); needed for non-WAV input"
 	uv sync --extra dev
 
-server: ## Run the server + web UI on http://localhost:8765
+server: ## Run the authenticated server and web UI on loopback
 	$(UV) mimivox-server
 
 app: ## Build dist/MimiVox.app and open it (needs Xcode 26+)
 	scripts/build_app.sh
 	open dist/MimiVox.app
 
-app-dev: ## Run the SwiftUI app from source against `make server`
+app-dev: ## Run the SwiftUI app and local helper from source
 	cd macos/MeetingTranslator && swift run MeetingTranslator
 
 test: ## Run the Python tests

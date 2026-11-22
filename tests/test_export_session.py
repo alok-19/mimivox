@@ -251,6 +251,13 @@ def test_write_export_empty_all_formats(tmp_path):
         assert p.stat().st_size > 0, f"{fmt}: file is empty"
 
 
+@pytest.mark.parametrize("session_id", ["../outside", r"nested\id"])
+def test_write_export_rejects_unsafe_session_ids(tmp_path, session_id):
+    with pytest.raises(ValueError, match="invalid session ID"):
+        write_export("json", [], session_id=session_id, out_dir=tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_pinned_rows_marked_and_filtered():
     events = _two_events()
     rows = pair_events(events, [2])

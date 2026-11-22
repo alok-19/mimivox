@@ -530,3 +530,32 @@ async def test_preview_passes_context_to_translator(monkeypatch):
     coord.schedule("来週までに返事をしないといけないですね。")
     await coord._run_task
     assert seen["context"] == (("見積もりが届きました。", "A quote arrived"),)
+
+
+async def test_service_display_publishes_transcript_without_printing_it(capsys):
+    from mimivox.config import ASRResult
+
+    text = "Private meeting transcript"
+    queue: asyncio.Queue = asyncio.Queue()
+    await queue.put(
+        ASRResult(
+            kind="partial",
+            text=text,
+            audio_ts="00:01",
+            wall_time="00:00:00",
+            asr_latency=0.1,
+        )
+    )
+    await queue.put(_final(text))
+    await queue.put(None)
+    events = []
+    await pipeline.display_worker(
+        queue,
+        [],
+        asyncio.get_running_loop(),
+        sse_broadcast=events.append,
+        partial_en_enabled=False,
+        show_transcript=False,
+    )
+    assert text not in capsys.readouterr().out
+    assert {"partial", "final"} <= {event["kind"] for event in events if event.get("ja") == text}

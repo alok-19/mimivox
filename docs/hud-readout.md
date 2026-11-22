@@ -11,4 +11,4 @@ Font size, display mode, voice and speed are per-device preferences (`UserDefaul
 
 ## Debug hook (replay only)
 
-`MIMIVOX_DEMO_REPLAY=<absolute wav>` starts a replay-file session of that WAV on launch and opens the HUD. It never uses the microphone or system audio and never switches read-aloud on. `MIMIVOX_DEMO_HUD=pin-first,reveal-first` pins the first line and reveals its other language. Launch arguments such as `-hud.displayMode englishOnly -hud.size medium` override the stored preferences for one run. Use with `MIMIVOX_PORT=<port>` against a server you started.
+`MIMIVOX_DEMO_REPLAY=<absolute wav>` starts a replay-file session of that WAV on launch and opens the HUD. It never uses the microphone or system audio and never switches read-aloud on. `MIMIVOX_DEMO_HUD=pin-first,reveal-first` pins the first line and reveals its other language. Launch arguments such as `-hud.displayMode englishOnly -hud.size medium` override the stored preferences for one run. The app starts its own helper.

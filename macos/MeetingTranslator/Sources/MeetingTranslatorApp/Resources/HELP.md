@@ -89,7 +89,8 @@ Open Settings with ⌘,.
 - **Meeting Apps**: auto-start offers and per-app capture rules.
 - **Glossary**: glossary profiles and their terms.
 - **Models**: verify, download, update, or remove models, including the notes model.
-  **Download Source** points downloads at your organization's model mirror.
+  **Download Source** points downloads at a model mirror. Use HTTPS when the mirror needs
+  an access token. HTTP mirrors work without a token.
 - **Privacy**: how long transcripts are kept, and **Delete All History**.
 
 ## Keyboard shortcuts

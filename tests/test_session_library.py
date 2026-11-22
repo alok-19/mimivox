@@ -170,6 +170,10 @@ def test_relabel_speaker_reindexes(lib):
     assert _ids(_search(q="山田")) == ["budget"]
 
 
+def test_relabel_speaker_returns_false_for_unsafe_id(lib):
+    assert session_archive.relabel_speaker("../outside", "長", "鈴木") is False
+
+
 def test_delete_removes_from_index(lib):
     session_archive.delete_session("budget")
     assert _ids(_search(q="来期")) == []

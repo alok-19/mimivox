@@ -22,7 +22,12 @@ The app passes the address to its helper as `HF_ENDPOINT` when the helper starts
 
 ## Access tokens
 
-A mirror that needs a login takes a token under Settings > Models > Download Source. MimiVox keeps it in the login Keychain (service "MimiVox model download token") and passes it to the helper as `HF_TOKEN`. MimiVox sends the token only to a custom mirror, never to huggingface.co.
+To use an authenticated mirror, enter its token under Settings > Models > Download Source. The macOS app stores the token in the login Keychain under service "MimiVox model download token". It binds the token to the mirror's HTTPS origin. It sends the token only to that origin. It never sends the token to huggingface.co. HTTP mirrors work without a token. The helper ignores tokens from the shell environment and local Hugging Face login.
+
+If you saved a mirror token in an earlier release, enter it again after you upgrade.
+MimiVox needs this step to bind the token to the mirror's HTTPS origin.
+
+Hugging Face Hub follows model download redirects. Its pinned HTTPX client removes the Authorization header when an HTTPS redirect changes origin. The Settings check follows a credentialed redirect only when it stays on the same HTTPS origin.
 
 ## Configuration profile
 

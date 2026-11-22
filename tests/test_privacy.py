@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from datetime import datetime, timedelta, timezone
@@ -47,6 +48,31 @@ def test_expiry_uses_injected_clock(tmp_path, monkeypatch):
     assert [e["id"] for e in session_archive.list_sessions()] == ["recent"]
     assert privacy.purge_expired("7d", now=NOW + timedelta(days=6)) == ["recent"]
     assert session_archive.list_sessions() == []
+
+
+def test_expiry_skips_malformed_index_ids(tmp_path, monkeypatch):
+    _root(monkeypatch, tmp_path)
+    _archive("old", 10)
+    entries = session_archive._read_index()
+    entries.append({"id": "../outside", "started_at": (NOW - timedelta(days=10)).isoformat()})
+    session_archive.index_path().write_text(json.dumps(entries), encoding="utf-8")
+
+    assert privacy.purge_expired("7d", now=NOW) == ["old"]
+
+
+def test_expiry_skips_archive_symlink_outside_directory(tmp_path, monkeypatch):
+    root = _root(monkeypatch, tmp_path)
+    root.mkdir(parents=True)
+    outside = tmp_path / "outside.json"
+    outside.write_text('{"id": "sid"}', encoding="utf-8")
+    session_archive.session_file("sid").symlink_to(outside)
+    session_archive.index_path().write_text(
+        json.dumps([{"id": "sid", "started_at": (NOW - timedelta(days=10)).isoformat()}]),
+        encoding="utf-8",
+    )
+
+    assert privacy.purge_expired("7d", now=NOW) == []
+    assert outside.read_text(encoding="utf-8") == '{"id": "sid"}'
 
 
 def test_forever_and_none_never_expire_existing(tmp_path, monkeypatch):

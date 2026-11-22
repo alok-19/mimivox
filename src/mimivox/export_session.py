@@ -488,6 +488,9 @@ def write_export(
     A ``pinned_only`` export is written as ``{session_id}.pinned.{ext}`` so it
     never overwrites the full transcript.
     """
+    from mimivox.session_archive import validate_session_id
+
+    validate_session_id(session_id)
     content = render(
         fmt,
         events,

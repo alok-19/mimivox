@@ -306,6 +306,12 @@ def test_vocabulary_endpoint_and_export_for_archived_session(client, tmp_path, m
     assert old_quote["gloss"] != "unrelated"
 
 
+def test_vocabulary_export_rejects_unsafe_session_id(tmp_path):
+    with pytest.raises(ValueError, match="invalid session ID"):
+        learning.write_vocabulary("anki", [], "../outside", tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
 def test_archived_english_to_japanese_vocabulary(client):
     english = "We signed a contract today."
     japanese = "今日は契約に署名しました。"

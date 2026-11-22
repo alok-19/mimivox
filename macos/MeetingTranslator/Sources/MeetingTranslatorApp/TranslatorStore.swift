@@ -84,9 +84,9 @@ final class TranslatorStore: ObservableObject {
     private var settingsAutosave: AnyCancellable?
     private var pendingGlossarySave: String?
 
-    /// Follows the port the helper actually listens on.
-    private var api: MeetingTranslatorAPIClient
     private let helper: HelperSupervisor
+    private let disconnectedAPI = MeetingTranslatorAPIClient(baseURL: URL(fileURLWithPath: "/"))
+    private var api: MeetingTranslatorAPIClient { helper.client ?? disconnectedAPI }
     /// Mirrors `helper.phase` for the UI.
     @Published private(set) var helperPhase: HelperPhase = .idle
     private var helperStartTask: Task<HelperPhase, Never>?
@@ -112,10 +112,8 @@ final class TranslatorStore: ObservableObject {
         self.helper = helper
         helper.launchEnvironment = {
             let source = ModelSource.current()
-            // Only read the Keychain when the token would be sent.
-            return source.helperEnvironment(token: source.endpoint == nil ? nil : ModelSourceToken.read())
+            return source.helperEnvironment(token: ModelSourceToken.read(for: source))
         }
-        self.api = MeetingTranslatorAPIClient(baseURL: helper.configuration.baseURL(port: helper.plannedPort))
         let defaults = UserDefaults.standard
         readAloudVoiceID = defaults.string(forKey: HUDPreferences.voiceKey) ?? ""
         let savedRate = defaults.double(forKey: HUDPreferences.rateKey)
@@ -349,8 +347,7 @@ final class TranslatorStore: ObservableObject {
     }
 
     var helperLogURL: URL? {
-        guard case .failed(let failure) = helperPhase else { return nil }
-        if case .foreignServer = failure { return nil }
+        guard case .failed = helperPhase else { return nil }
         return helper.configuration.logURL
     }
 
@@ -1191,7 +1188,6 @@ final class TranslatorStore: ObservableObject {
         }
     }
 
-    /// Starts (or joins the start of) the helper and points `api` at its port.
     private func startServer() async -> HelperPhase {
         guard !isSnapshotFixture else { return helperPhase }
         if case .ready = helper.phase {
@@ -1202,12 +1198,6 @@ final class TranslatorStore: ObservableObject {
         let phase = await task.value
         helperStartTask = nil
         helperPhase = phase
-        if case .ready(let port) = phase {
-            let url = helper.configuration.baseURL(port: port)
-            if api.baseURL != url {
-                api = MeetingTranslatorAPIClient(baseURL: url)
-            }
-        }
         return phase
     }
 }

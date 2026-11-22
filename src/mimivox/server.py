@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
+import hmac
+import ipaddress
 import json
+import os
+import secrets
+import sys
 import threading
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager, suppress
+from contextlib import ExitStack, asynccontextmanager, suppress
 from pathlib import Path
+from urllib.parse import quote
 
 import uvicorn
 from fastapi import FastAPI, Request
@@ -21,7 +28,7 @@ from mimivox.languages import UnsupportedPair, resolve_pair
 from mimivox.pair_translate import unready_reason
 from mimivox.parent_watch import watch_parent
 from mimivox.pipeline import run
-from mimivox.privacy import RetentionSweeper, apply_offline_lock
+from mimivox.privacy import RetentionSweeper, apply_offline_lock, saves_transcripts
 from mimivox.settings_store import apply_settings_for_session
 from mimivox.setup_service import setup_manager
 
@@ -111,8 +118,50 @@ async def lifespan(app: FastAPI):
         api_state.pipeline_task.cancel()
 
 
+API_TOKEN_ENV = "MIMIVOX_API_TOKEN"
+PUBLIC_PATHS = frozenset({"/"})
+
 app = FastAPI(title="MimiVox", lifespan=lifespan)
+app.state.api_token = os.environ.get(API_TOKEN_ENV) or secrets.token_urlsafe(32)
 app.include_router(api_router)
+
+
+def _is_loopback_host(host: str | None) -> bool:
+    if host is None:
+        return False
+    if host.lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host.split("%", 1)[0]).is_loopback
+    except ValueError:
+        return False
+
+
+@app.middleware("http")
+async def require_local_bearer(request: Request, call_next):
+    if not _is_loopback_host(request.url.hostname):
+        return JSONResponse({"detail": "Invalid host"}, status_code=421)
+
+    if request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+
+    authorization = request.headers.get("authorization", "")
+    scheme, _, supplied = authorization.partition(" ")
+    expected = request.app.state.api_token
+    if (
+        scheme.lower() != "bearer"
+        or not supplied
+        or not hmac.compare_digest(supplied.encode("utf-8"), expected.encode("utf-8"))
+    ):
+        return JSONResponse(
+            {"detail": "Unauthorized"},
+            status_code=401,
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 # ---------------------------------------------------------------------------
 # Static HTML
@@ -231,6 +280,8 @@ async def control(body: dict):
                 asr_only=False,
                 audio_device=device,
                 sse_broadcast=_dual_broadcast,
+                save_log=saves_transcripts(api_state.settings),
+                show_transcript=False,
                 pair=pair,
             )
         )
@@ -279,6 +330,26 @@ async def health():
     )
 
 
+def _native_credentials() -> tuple[str, bytes]:
+    data = sys.stdin.buffer.read(8_193)
+    if len(data) > 8_192:
+        raise ValueError("credentials exceed the size limit")
+    credentials = json.loads(data)
+    token = credentials["token"]
+    pem = base64.b64decode(credentials["pem"], validate=True)
+    if not isinstance(token, str) or not token or not 0 < len(pem) <= 4_096:
+        raise ValueError("invalid helper credentials")
+    return token, pem
+
+
+def _tls_pipe(pem: bytes, resources: ExitStack) -> str:
+    read_fd, write_fd = os.pipe()
+    resources.callback(os.close, read_fd)
+    with os.fdopen(write_fd, "wb") as stream:
+        stream.write(pem)
+    return f"/dev/fd/{read_fd}"
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -286,6 +357,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="MimiVox Web Server")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--no-browser-link", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument(
         "--parent-pid",
         type=int,
@@ -293,16 +365,34 @@ def main() -> None:
         help="exit when this process exits (the macOS app passes its pid)",
     )
     args = parser.parse_args()
-    if args.parent_pid is not None:
-        watch_parent(args.parent_pid)
+    if not _is_loopback_host(args.host):
+        parser.error("--host must be localhost or a loopback IP address")
 
-    uvicorn.run(
-        "mimivox.server:app",
-        host=args.host,
-        port=args.port,
-        reload=False,
-        log_level="warning",
-    )
+    with ExitStack() as resources:
+        certfile = keyfile = None
+        if args.parent_pid is not None:
+            watch_parent(args.parent_pid)
+            try:
+                token, pem = _native_credentials()
+            except (KeyError, OSError, TypeError, ValueError):
+                parser.error("the macOS helper requires valid launch credentials on standard input")
+            app.state.api_token = token
+            certfile = _tls_pipe(pem, resources)
+            keyfile = _tls_pipe(pem, resources)
+        elif not args.no_browser_link:
+            host = f"[{args.host}]" if ":" in args.host else args.host
+            token = quote(app.state.api_token, safe="")
+            print(f"Open MimiVox in your browser: http://{host}:{args.port}/#token={token}")
+
+        uvicorn.run(
+            app,
+            host=args.host,
+            port=args.port,
+            reload=False,
+            log_level="warning",
+            ssl_certfile=certfile,
+            ssl_keyfile=keyfile,
+        )
 
 
 if __name__ == "__main__":

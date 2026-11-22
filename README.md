@@ -54,17 +54,21 @@ xattr -dr com.apple.quarantine /Applications/MimiVox.app
 
 ```bash
 make setup      # install deps into .venv (uv)
-make server     # server + web UI at http://localhost:8765
+make server     # start the local server and open the printed browser URL
 make check      # lint + tests, run before a PR
 ```
+
+The standalone server prints a browser URL with a temporary access token. Open that URL
+on the same Mac and keep it private. The server listens on loopback and requires the token
+for API requests and live events.
 
 Run `make` to list every command:
 
 | Command | What it does |
 |---|---|
 | `make setup` | Install Python deps and dev tools into `.venv` |
-| `make server` | Run the server and web UI on port 8765 |
-| `make app-dev` | Run the SwiftUI app from source against `make server` |
+| `make server` | Run the local server and web UI |
+| `make app-dev` | Run the SwiftUI app and local helper from source |
 | `make app` | Build and open `dist/MimiVox.app` |
 | `make test` / `make lint` / `make fmt` | pytest, ruff check, ruff fix |
 | `make swift-check` | Build the Swift app and run its checks |
@@ -88,8 +92,8 @@ audio ─▶ Silero VAD ─▶ mlx-whisper ─▶ CAT-Translate / Qwen ─▶ ca
                        FastAPI server(src/mimivox) ┴─▶ macOS app · web UI · terminal
 ```
 
-The SwiftUI app is only a client. It starts the Python server on a free local port and talks
-to it over HTTP and SSE. Details are in [docs/architecture.md](docs/architecture.md) and
+The SwiftUI app starts its own Python helper on a free local port. It checks the helper's
+TLS certificate and sends a token with each request. Details are in [docs/architecture.md](docs/architecture.md) and
 [macos/README.md](macos/README.md).
 
 ```

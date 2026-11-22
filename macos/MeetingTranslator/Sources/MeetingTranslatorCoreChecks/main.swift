@@ -416,8 +416,10 @@ func checkModelSource() throws {
     try expect(
         ModelSource.resolve(managed: nil, user: nil, build: nil) == ModelSource(), "no value means huggingface.co")
     try expect(
-        ModelSource().helperEnvironment(token: "secret").isEmpty,
-        "huggingface.co gets no HF_ENDPOINT and never the mirror token")
+        ModelSource().helperEnvironment(token: "secret") == [
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
+            "HF_TOKEN": "",
+        ], "huggingface.co gets no endpoint or token and ignores inherited Hugging Face credentials")
 
     let all = ModelSource.resolve(
         managed: "https://org.example/hf/", user: "https://me.example", build: "https://build.example")
@@ -435,7 +437,48 @@ func checkModelSource() throws {
 
     let env = all.helperEnvironment(token: "t0k")
     try expect(
-        env == ["HF_ENDPOINT": "https://org.example/hf", "HF_TOKEN": "t0k"], "a mirror gets HF_ENDPOINT and its token")
+        env == [
+            "HF_ENDPOINT": "https://org.example/hf",
+            "HF_TOKEN": "t0k",
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN": "0",
+        ], "an HTTPS mirror gets its configured token")
+    try expect(all.accessTokenOrigin == "https://org.example:443", "the token binds to its HTTPS origin")
+    try expect(
+        all.helperEnvironment(token: " \n ")["HF_HUB_DISABLE_IMPLICIT_TOKEN"] == "1",
+        "a blank token leaves inherited Hugging Face credentials disabled")
+    try expect(
+        all.permitsCredentialedRedirect(to: URL(string: "https://ORG.example/next")!),
+        "a credentialed probe can redirect within its HTTPS origin")
+    try expect(
+        !all.permitsCredentialedRedirect(to: URL(string: "https://other.example/next")!),
+        "a credentialed probe cannot redirect to another host")
+    try expect(
+        !all.permitsCredentialedRedirect(to: URL(string: "http://org.example/next")!),
+        "a credentialed probe cannot downgrade to HTTP")
+    try expect(
+        !all.permitsCredentialedRedirect(to: URL(string: "https://org.example:444/next")!),
+        "a credentialed probe cannot redirect to another port")
+
+    let httpSource = ModelSource.resolve(managed: nil, user: "http://mirror.example/hf", build: nil)
+    try expect(
+        httpSource.endpoint?.absoluteString == "http://mirror.example/hf",
+        "anonymous HTTP mirrors remain available")
+    try expect(!httpSource.allowsAccessToken, "HTTP mirrors cannot use access tokens")
+    try expect(
+        httpSource.helperEnvironment(token: "secret") == [
+            "HF_ENDPOINT": "http://mirror.example/hf",
+            "HF_TOKEN": "",
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
+        ], "an HTTP mirror receives no configured or inherited Hugging Face token")
+    try expect(
+        ModelSource.normalize("https://user:password@mirror.example") == nil,
+        "endpoint URLs cannot contain credentials")
+    let officialHub = ModelSource.resolve(managed: nil, user: "https://huggingface.co", build: nil)
+    try expect(!officialHub.allowsAccessToken, "a custom endpoint cannot send a mirror token to huggingface.co")
+    let dottedHub = ModelSource.resolve(managed: nil, user: "https://huggingface.co.", build: nil)
+    try expect(!dottedHub.allowsAccessToken, "a trailing DNS dot cannot bypass the huggingface.co token restriction")
+    let credentialURL = ModelSource(endpoint: URL(string: "https://user:password@mirror.example")!, origin: .user)
+    try expect(!credentialURL.allowsAccessToken, "constructed endpoints with URL credentials cannot receive the token")
     try expect(
         all.probeURL().absoluteString
             == "https://org.example/hf/hotchpotch/CAT-Translate-1.4b-mlx-q4/resolve/main/config.json",
@@ -455,7 +498,7 @@ func checkHelperConfiguration() throws {
     let projectRoot = URL(fileURLWithPath: "/tmp/meeting-translator")
     let config = HelperConfiguration(projectRoot: projectRoot, portPolicy: .fixed(8899))
     try expect(
-        config.baseURL(port: 8899).absoluteString == "http://127.0.0.1:8899/", "base URL should use the given port")
+        config.baseURL(port: 8899).absoluteString == "https://127.0.0.1:8899/", "base URL should use the given port")
     try expect(
         config.helperArguments(port: 8899, parentPID: 42).suffix(10) == [
             "run",
@@ -518,7 +561,7 @@ func fakeSupervisor(
     policy: HelperPortPolicy,
     ports: PortSequence = PortSequence([]),
     env: [String: String] = [:],
-    probe: @escaping @Sendable (URL) async -> HelperProbeResult
+    probe: @escaping @Sendable (URL) async -> Bool
 ) throws -> HelperSupervisor {
     let script = dir.appendingPathComponent("fake-server.sh")
     if !FileManager.default.fileExists(atPath: script.path) {
@@ -562,7 +605,7 @@ func checkHelperLifecycle() async throws {
     let ports = PortSequence([41001, 41002])
     let retrying = try fakeSupervisor(
         dir: dir, policy: .automatic, ports: ports, env: ["FAKE_BUSY_PORTS": "41001"],
-        probe: { $0.port == 41002 ? .mimivox : .unreachable })
+        probe: { $0.port == 41002 })
     try expect(retrying.plannedPort == 41001, "automatic policy plans the first free port")
     let ready = await retrying.start()
     try expect(ready == .ready(port: 41002), "errno 48 retries on a new port, got \(ready)")
@@ -580,7 +623,7 @@ func checkHelperLifecycle() async throws {
     let busyPorts = PortSequence([41011, 41012, 41013, 41014])
     let busy = try fakeSupervisor(
         dir: dir, policy: .automatic, ports: busyPorts, env: ["FAKE_BUSY_PORTS": "41011 41012 41013 41014"],
-        probe: { _ in .unreachable })
+        probe: { _ in false })
     let exhausted = await busy.start()
     try expect(exhausted == .failed(.portInUse(port: 41013)), "three busy ports fail as portInUse, got \(exhausted)")
     try expect(busyPorts.handedOut == HelperSupervisor.maxPortAttempts, "one port per attempt")
@@ -588,7 +631,7 @@ func checkHelperLifecycle() async throws {
     // The process dies during startup: fail at once with its code and stderr.
     let crashing = try fakeSupervisor(
         dir: dir, policy: .automatic, ports: PortSequence([41021]), env: ["FAKE_CRASH": "1"],
-        probe: { _ in .unreachable })
+        probe: { _ in false })
     let crashed = await crashing.start()
     guard case .failed(.exited(let code, let tail)) = crashed else {
         throw CheckFailure(description: "crash should fail as exited, got \(crashed)")
@@ -603,7 +646,7 @@ func checkHelperLifecycle() async throws {
     // A ready server that dies later is reported as failed.
     let dying = try fakeSupervisor(
         dir: dir, policy: .automatic, ports: PortSequence([41031]), env: ["FAKE_DIE_LATER": "1"],
-        probe: { _ in .mimivox })
+        probe: { _ in true })
     let result2 = await dying.start()
     try expect(result2 == .ready(port: 41031), "ready before it dies")
     let deadline = Date().addingTimeInterval(5)
@@ -614,32 +657,32 @@ func checkHelperLifecycle() async throws {
         dying.phase == .failed(.exited(code: 5, stderrTail: "fake server on 41031\nsegfault later")),
         "a crash after ready fails the phase, got \(dying.phase)")
 
-    // Pinned port: reuse MimiVox, refuse anything else, without launching.
-    try? fm.removeItem(at: log)
-    let reuse = try fakeSupervisor(dir: dir, policy: .fixed(41041), probe: { _ in .mimivox })
-    let result3 = await reuse.start()
-    try expect(result3 == .ready(port: 41041), "pinned port reuses a MimiVox server")
-    let foreign = try fakeSupervisor(dir: dir, policy: .fixed(41042), probe: { _ in .foreign })
-    let result4 = await foreign.start()
-    try expect(result4 == .failed(.foreignServer(port: 41042)), "pinned port refuses a foreign server")
-    try expect(!fm.fileExists(atPath: log.path), "neither case launches a process")
+    let fixed = try fakeSupervisor(dir: dir, policy: .fixed(41041), probe: { _ in true })
+    let fixedPhase = await fixed.start()
+    try expect(fixedPhase == .ready(port: 41041), "the app launches its own helper on a fixed port")
+    let client = try unwrap(fixed.client, "authenticated client for the owned helper")
+    let request = try client.makeRequest(path: "/api/status", method: "GET")
+    try expect(request.url?.scheme == "https", "helper requests use TLS")
+    try expect(
+        request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true,
+        "helper requests authenticate the client")
+    fixed.stop()
+    try expect(fixed.client == nil, "stop removes the connected client")
 
     // A pinned port we cannot bind fails without trying another port.
     let pinnedBusy = try fakeSupervisor(
-        dir: dir, policy: .fixed(41051), env: ["FAKE_BUSY_PORTS": "41051"], probe: { _ in .unreachable })
+        dir: dir, policy: .fixed(41051), env: ["FAKE_BUSY_PORTS": "41051"], probe: { _ in false })
     let result5 = await pinnedBusy.start()
     try expect(result5 == .failed(.portInUse(port: 41051)), "pinned bind failure is portInUse")
 
-    // An oversized log is truncated at launch.
-    try Data(count: 6 * 1024 * 1024).write(to: log)
-    let fresh = try fakeSupervisor(dir: dir, policy: .automatic, ports: PortSequence([41061]), probe: { _ in .mimivox })
+    try Data("old transcript".utf8).write(to: log)
+    let fresh = try fakeSupervisor(dir: dir, policy: .automatic, ports: PortSequence([41061]), probe: { _ in true })
     _ = await fresh.start()
     fresh.stop()
-    let size = try fm.attributesOfItem(atPath: log.path)[.size] as? Int ?? 0
-    try expect(size < 1024, "log over 5 MB is truncated, size \(size)")
+    let newLog = try String(contentsOf: log, encoding: .utf8)
+    try expect(!newLog.contains("old transcript"), "the helper starts with a fresh log")
 
-    // Probing: a 404 HTML page is foreign, a refused connection is unreachable,
-    // and the error never carries the HTML body.
+    // A status error carries metadata without rendering the HTML body.
     let status = URL(string: "http://127.0.0.1:8765/api/status?events=0")!
     let html = MockTransport { request in
         (
@@ -648,11 +691,6 @@ func checkHelperLifecycle() async throws {
         )
     }
     let base = URL(string: "http://127.0.0.1:8765/")!
-    let result6 = await HelperSupervisor.probeStatus(baseURL: base, transport: html)
-    try expect(result6 == .foreign, "404 page is foreign")
-    let refused = MockTransport { _ in throw URLError(.cannotConnectToHost) }
-    let result7 = await HelperSupervisor.probeStatus(baseURL: base, transport: refused)
-    try expect(result7 == .unreachable, "refused is unreachable")
     do {
         _ = try await MeetingTranslatorAPIClient(baseURL: base, transport: html).status()
         throw CheckFailure(description: "404 should throw")
