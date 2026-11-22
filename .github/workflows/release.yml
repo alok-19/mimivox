@@ -1,0 +1,97 @@
+name: macOS release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check version and prepare release notes
+        id: version
+        run: |
+          plist=macos/MeetingTranslator/BundleResources/Info.plist
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          if [[ ! "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::The macOS bundle version must be a stable version."
+            exit 1
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::The tag must match the macOS bundle version (v$version)."
+            exit 1
+          fi
+          changelog=macos/MeetingTranslator/Sources/MeetingTranslatorApp/Resources/CHANGELOG.md
+          awk -v heading="## [$version] - " '
+            /^## \[[0-9]/ {
+              if (entry) exit
+              if (index($0, heading) != 1) exit 1
+              entry = 1
+              next
+            }
+            entry && /^- / { bullet = 1 }
+            entry { print }
+            END { if (!bullet) exit 1 }
+          ' "$changelog" > "$RUNNER_TEMP/release-notes.md" || {
+            echo "::error::Add release notes for $version as the latest version in the in-app changelog."
+            exit 1
+          }
+          cat >> "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+
+          ### macOS download
+
+          The ZIP contains the Apple silicon app. The app uses an ad-hoc signature. See the [macOS guide](https://github.com/alok-19/mimivox/blob/main/macos/README.md) for Gatekeeper instructions.
+          NOTES
+          echo "number=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv and check the lockfile
+        run: |
+          command -v uv || brew install uv
+          uv lock --check
+
+      - name: Build and verify the macOS ZIP
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          scripts/build_app.sh
+          app=dist/MimiVox.app
+          zip="dist/MimiVox-$VERSION-macos-arm64.zip"
+          test "$(lipo -archs "$app/Contents/MacOS/MeetingTranslator")" = arm64
+          python="$app/Contents/Resources/python/bin/python3"
+          test "$("$python" -I -c 'from importlib.metadata import version; print(version("mimivox"))')" = "$VERSION"
+          ditto -c -k --keepParent "$app" "$zip"
+          ditto -x -k "$zip" "$RUNNER_TEMP/verify"
+          extracted="$RUNNER_TEMP/verify/MimiVox.app"
+          codesign --verify --deep --strict "$extracted"
+          cmp "$extracted/Contents/Resources/CHANGELOG.md" \
+            macos/MeetingTranslator/Sources/MeetingTranslatorApp/Resources/CHANGELOG.md
+          shasum -a 256 "$zip"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ZIP: ${{ steps.package.outputs.zip }}
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ZIP" --verify-tag \
+            --title "MimiVox $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"

@@ -165,3 +165,12 @@ Both are Markdown files in `Sources/MeetingTranslatorApp/Resources/`, bundled in
   Changelog** and **Help → Changelog**. Add entries under `## [Unreleased]`; on release, rename
   that section to the version and set the same `CFBundleShortVersionString` in
   `BundleResources/Info.plist`. `swift run MeetingTranslatorCoreChecks` fails if they differ.
+
+## Publish a release
+
+Update the version in `pyproject.toml` and `BundleResources/Info.plist`. Run `uv lock` and
+add the release entry to the in-app changelog. Push the commit, then push its stable
+version tag (for example, `v1.1.2`). GitHub Actions builds the Apple silicon app, verifies
+the ZIP, and publishes it with the in-app changelog as the release notes.
+
+Run **macOS release** manually from the Actions tab to check the build without publishing.
