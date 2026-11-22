@@ -9,6 +9,18 @@ sections of `- ` bullets, newest release first. Collect upcoming changes under
 version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 (`MeetingTranslatorCoreChecks` fails if the two differ).
 
+## [1.1.1] - 2026-11-23
+
+### Changed
+- MimiVox uses HTTPS and a new access token each time it connects to its local helper. If you run the server from a terminal, open the current link from that terminal to use the browser interface.
+- Private model mirrors require HTTPS when you use an access token. Enter the token again in **Settings → Models → Download Source** after you upgrade.
+
+### Fixed
+- The local helper no longer writes captions or translations to its log during live meetings.
+- MimiVox checks session IDs before it reads or writes meeting data.
+- The helper rejects audio requests that exceed the size limit.
+- The browser interface renders caption cards correctly.
+
 ## [1.1.0] - 2026-11-23
 
 ### Added
