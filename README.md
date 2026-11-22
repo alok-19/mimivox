@@ -121,6 +121,19 @@ elsewhere. Anything derived from a session should register
 `session_archive.register_delete_hook` so deletes and retention reach it
 ([docs/privacy.md](docs/privacy.md)).
 
+## Release
+
+1. Set the new version in [`pyproject.toml`](pyproject.toml) and update both version fields in [`Info.plist`](macos/MeetingTranslator/BundleResources/Info.plist). Run `uv lock`.
+2. Add a dated entry for that version to the [in-app changelog](macos/MeetingTranslator/Sources/MeetingTranslatorApp/Resources/CHANGELOG.md). Commit the changes and push them to `main`.
+3. Tag the release commit and push the tag. Replace `v1.1.2` with your version.
+
+   ```bash
+   git tag -a v1.1.2 -m "MimiVox 1.1.2"
+   git push origin v1.1.2
+   ```
+
+GitHub Actions builds and publishes the Apple silicon ZIP with the in-app changelog as the release notes. Only stable `vMAJOR.MINOR.PATCH` tags trigger a release.
+
 ## Docs
 
 - [Features](docs/features.md): captions, glossaries, notes, library, learning mode, APIs
