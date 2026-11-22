@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MimiVox — Live meeting captions, on your Mac</title>
+<meta name="description" content="Live meeting captions and translation that run entirely on your Mac. Japanese, English, Chinese and Korean. No audio or text leaves the machine.">
+<meta property="og:title" content="MimiVox">
+<meta property="og:description" content="Live meeting captions and translation, fully on your Mac.">
+<meta property="og:image" content="images/mimivox-logo-uwu.png">
+<meta name="theme-color" content="#f6f8ff">
+<link rel="icon" href="images/mimivox-logo-uwu.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&family=Noto+Sans+JP:wght@500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f6f8ff;
+    --surface: #ffffff;
+    --tint: #eaefff;
+    --tint-2: #dbe3ff;
+    --line: #e2e7f7;
+    --ink: #121c5c;
+    --ink-2: #4a5487;
+    --ink-3: #626b97;
+    --blue: #2f4fd8;
+    --blue-deep: #1b33a8;
+    --periwinkle: #7189f2;
+    --coral: #f2716b;
+    --pink: #f29bd6;
+    --radius: 20px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px -12px rgba(0,0,0,.14);
+    --max: 1080px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 400 17px/1.6 "Onest", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  img { max-width: 100%; height: auto; display: block; }
+  a { color: inherit; text-decoration: none; }
+  .wrap { width: min(var(--max), 100% - 32px); margin-inline: auto; }
+
+  /* Nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(14px);
+    -webkit-backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .2s;
+  }
+  nav.scrolled { border-bottom-color: var(--line); }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; font-size: 18px; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 9px; background: var(--blue);
+    display: grid; place-items: center;
+  }
+  .nav-links { display: flex; align-items: center; gap: 28px; font-size: 15px; font-weight: 500; color: var(--ink-2); }
+  .nav-links a:not(.btn):hover { color: var(--ink); }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 44px; padding: 0 20px; border-radius: 999px;
+    font-weight: 600; font-size: 15px; white-space: nowrap;
+    transition: transform .15s ease, background .15s ease, box-shadow .15s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--blue); color: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 6px 16px -8px rgba(0,0,0,.35); }
+  .btn-primary:hover { background: var(--blue-deep); }
+  .btn-ghost { background: var(--surface); color: var(--ink); border: 1px solid var(--line); }
+  .btn-ghost:hover { border-color: var(--tint-2); background: var(--tint); }
+  .btn-sm { height: 38px; padding: 0 16px; font-size: 14px; }
+  .btn svg { width: 18px; height: 18px; }
+
+  /* Hero */
+  .hero { padding: 56px 0 40px; text-align: center; background: linear-gradient(#edf1ff, var(--bg) 70%); }
+  .hero-logo { width: min(400px, 84%); margin: 0 auto 32px; }
+  h1, h2, .brand, .pair { font-family: "Bricolage Grotesque", "Onest", sans-serif; }
+  h1 {
+    font-size: clamp(34px, 5.4vw, 58px); line-height: 1.06; letter-spacing: -.035em;
+    font-weight: 800; margin: 0 auto 18px;
+  }
+  h1 em { font-style: normal; color: var(--blue); }
+  .lede { font-size: clamp(17px, 2vw, 19px); color: var(--ink-2); max-width: 34rem; margin: 0 auto 32px; }
+  .cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .meta { margin-top: 18px; font-size: 13px; color: var(--ink-3); font-weight: 500; }
+
+  /* Caption demo */
+  .demo { margin: 64px auto 0; max-width: 760px; text-align: left; }
+  .window {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 22px;
+    box-shadow: 0 2px 4px rgba(0,0,0,.04), 0 40px 80px -36px rgba(0,0,0,.22);
+    overflow: hidden;
+  }
+  .window-bar {
+    display: flex; align-items: center; gap: 8px; padding: 14px 18px;
+    border-bottom: 1px solid var(--line); font-size: 13px; color: var(--ink-3); font-weight: 500;
+  }
+  .dots { display: flex; gap: 6px; margin-right: 8px; }
+  .dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--tint-2); }
+  .live {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+    padding: 4px 10px; border-radius: 999px; background: #fff0ef; color: #a8322d; font-weight: 600; font-size: 12px;
+  }
+  .live::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .lines { padding: 10px 24px 22px; min-height: 300px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .line {
+    display: grid; grid-template-columns: 92px 1fr; gap: 14px; padding: 14px 0;
+    border-top: 1px solid var(--line);
+    animation: rise .5s cubic-bezier(.2,.7,.2,1) both;
+  }
+  .line:first-child { border-top: 0; }
+  .line.old { opacity: .45; }
+  @keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+  .who { font-size: 12px; font-weight: 600; color: var(--ink-3); padding-top: 3px; }
+  .who b { display: block; font-weight: 700; }
+  .who .s1 { color: var(--blue); }
+  .who .s2 { color: #9b4fc4; }
+  .ja { font-family: "Noto Sans JP", sans-serif; font-size: 14px; color: var(--ink-3); margin-bottom: 2px; }
+  .en { font-size: 18px; font-weight: 600; color: var(--ink); letter-spacing: -.01em; min-height: 1.6em; }
+  .en .caret { display: inline-block; width: 2px; height: 1.05em; background: var(--blue); vertical-align: -2px; margin-left: 2px; animation: pulse 1s infinite; }
+
+  /* Sections */
+  section { padding: 96px 0; }
+  h2 { font-size: clamp(28px, 3.6vw, 40px); line-height: 1.12; letter-spacing: -.03em; font-weight: 800; margin: 0 0 14px; }
+  .sub { color: var(--ink-2); max-width: 36rem; margin: 0; }
+  .head { margin-bottom: 48px; }
+  .head.center { text-align: center; }
+  .head.center .sub { margin-inline: auto; }
+
+  /* Languages */
+  .langs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .lang {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px;
+  }
+  .pair { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 22px; letter-spacing: -.02em; margin-bottom: 6px; }
+  .pair svg { width: 18px; height: 18px; color: var(--periwinkle); }
+  .lang p { margin: 0; font-size: 14px; color: var(--ink-3); }
+  .lang.main { background: var(--blue); border-color: var(--blue); color: #fff; }
+  .lang.main .pair svg { color: #b8c6ff; }
+  .lang.main p { color: #e1e6ff; }
+
+  /* Features */
+  .features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .feature {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 28px; transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .feature:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+  .feature h3 { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 700; letter-spacing: -.015em; margin: 0 0 8px; }
+  .feature h3 svg { flex: none; width: 20px; height: 20px; color: var(--blue); }
+  .feature p { margin: 0; font-size: 15px; color: var(--ink-2); line-height: 1.55; }
+
+  /* Privacy */
+  .privacy {
+    background: linear-gradient(160deg, #e4eaff 0%, #eef1ff 55%, #f3eeff 100%);
+    border-radius: 32px; padding: clamp(36px, 6vw, 72px);
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center;
+  }
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .checks li {
+    display: flex; gap: 14px; align-items: flex-start;
+    background: rgba(255,255,255,.75); border: 1px solid rgba(255,255,255,.9);
+    border-radius: 16px; padding: 18px 20px;
+  }
+  .checks svg { flex: none; width: 22px; height: 22px; color: var(--blue); margin-top: 1px; }
+  .checks b { display: block; font-weight: 700; font-size: 15px; }
+  .checks span { font-size: 14px; color: var(--ink-2); }
+
+  /* Install */
+  .install > *, .privacy > * { min-width: 0; }
+  .install { display: grid; grid-template-columns: 1fr 1.25fr; gap: 48px; align-items: center; }
+  .reqs { list-style: none; padding: 0; margin: 24px 0 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .reqs li { font-size: 13px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .term {
+    background: #141c4d; border-radius: 20px; color: #dfe5ff; overflow: hidden;
+    box-shadow: 0 24px 48px -28px rgba(0, 0, 0, .35);
+  }
+  .term-bar { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .term-bar .dots i { background: rgba(255,255,255,.18); }
+  .copy {
+    font: 600 12px "Onest", sans-serif; color: #b8c3ff; background: rgba(255,255,255,.08);
+    border: 0; border-radius: 8px; padding: 6px 10px; cursor: pointer;
+  }
+  .copy:hover { background: rgba(255,255,255,.14); color: #fff; }
+  pre { margin: 0; padding: 22px 24px 26px; font: 400 14px/1.9 "JetBrains Mono", ui-monospace, monospace; overflow-x: auto; }
+  pre .p { color: #7f8de0; user-select: none; }
+  pre .c { color: #97a2d6; }
+  .note { font-size: 14px; color: var(--ink-3); margin-top: 16px; }
+  .note code { font: 500 13px "JetBrains Mono", monospace; background: var(--tint); color: var(--ink); padding: 2px 6px; border-radius: 6px; }
+
+  /* Footer */
+  footer { padding: 40px 0 56px; border-top: 1px solid var(--line); font-size: 14px; color: var(--ink-3); }
+  footer .wrap { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  footer a:hover { color: var(--ink); }
+  footer nav { all: unset; display: flex; gap: 22px; }
+
+  /* Reveal */
+  .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  @media (max-width: 900px) {
+    .features { grid-template-columns: repeat(2, 1fr); }
+    .langs { grid-template-columns: repeat(2, 1fr); }
+    .privacy, .install { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 600px) {
+    h1 br { display: none; }
+    .nav-links a:not(.btn) { display: none; }
+    section { padding: 72px 0; }
+    .features { grid-template-columns: 1fr; }
+    .line { grid-template-columns: 1fr; gap: 4px; }
+    .who b { display: inline; margin-right: 6px; }
+    .lines { padding-inline: 18px; min-height: 340px; }
+    .en { font-size: 16px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<nav id="nav">
+  <div class="wrap">
+    <a href="#" class="brand" aria-label="MimiVox home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+      </span>
+      MimiVox
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+      <a class="btn btn-ghost btn-sm" href="https://github.com/alok-19/mimivox">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.4-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <img class="hero-logo" src="images/mimivox-logo-uwu.png" alt="MimiVox" width="1200" height="504">
+    <h1>Understand every meeting, <br><em>as it happens.</em></h1>
+    <p class="lede">Live captions and translation for Zoom, Teams and Meet — running entirely on your Mac. Nothing leaves the machine.</p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#install">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.6 2.1-3.8 2.2-3.9-1.2-1.8-3.1-2-3.7-2-1.6-.2-3.1.9-3.9.9-.8 0-2-.9-3.3-.9-1.7 0-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.8 1.2 1.8 2.6 3.1 2.6 1.3-.1 1.7-.8 3.3-.8 1.5 0 1.9.8 3.3.8 1.4 0 2.2-1.3 3-2.5 1-1.4 1.4-2.8 1.4-2.8s-2.5-1-2.5-4.1ZM13.9 4.9c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4Z"/></svg>
+        Get it for Mac
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/alok-19/mimivox">View source</a>
+    </div>
+    <p class="meta">Free &amp; open source · Apple Silicon · macOS 14+</p>
+
+    <div class="demo reveal" aria-label="Example of live captions">
+      <div class="window">
+        <div class="window-bar">
+          <span class="dots"><i></i><i></i><i></i></span>
+          Weekly sync · JA → EN
+          <span class="live">Live</span>
+        </div>
+        <div class="lines" id="lines" aria-live="off"></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="languages">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>Four language pairs.<br>One quiet window.</h2>
+      <p class="sub">Japanese to English is the most refined path, with a dedicated translation model tuned for meetings.</p>
+    </div>
+    <div class="langs">
+      <div class="lang main reveal">
+        <div class="pair">JA <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> EN</div>
+        <p>CAT-Translate 1.4B</p>
+      </div>
+      <div class="lang reveal">
+        <div class="pair">EN <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> JA</div>
+        <p>Qwen3-4B</p>
+      </div>
+      <div class="lang reveal">
+        <div class="pair">ZH <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> EN</div>
+        <p>Qwen3-4B</p>
+      </div>
+      <div class="lang reveal">
+        <div class="pair">KO <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg> EN</div>
+        <p>Qwen3-4B</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="padding-top:0">
+  <div class="wrap">
+    <div class="head reveal">
+      <h2>More than captions.</h2>
+      <p class="sub">Everything you need during the meeting, and after it.</p>
+    </div>
+    <div class="features">
+      <article class="feature reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="3"/><path d="M7 9h6M7 12h10M9 20h6"/></svg>Floating captions</h3>
+        <p>An always-on-top overlay. Bilingual or single language, pin the lines that matter.</p>
+      </article>
+      <article class="feature reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>Notes &amp; Ask</h3>
+        <p>Summaries, decisions and action items — or ask a question about what was said.</p>
+      </article>
+      <article class="feature reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>Speaker labels</h3>
+        <p>Know who said what. Rename speakers once and it sticks for the meeting.</p>
+      </article>
+      <article class="feature reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h12v16H6a2 2 0 0 0-2 2z"/><path d="M4 21h14M9 8h5"/></svg>Glossaries</h3>
+        <p>Teach it your names, products and jargon so terms come out right every time.</p>
+      </article>
+      <article class="feature reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Meeting library</h3>
+        <p>Search every past meeting in either language, by speaker, tag or date.</p>
+      </article>
+      <article class="feature reveal">
+        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5z"/><path d="M6 10.5V16c0 1.5 2.7 3 6 3s6-1.5 6-3v-5.5"/></svg>Learning mode</h3>
+        <p>Furigana, hover definitions and an Anki deck of words from each meeting.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section id="privacy" style="padding-top:0">
+  <div class="wrap">
+    <div class="privacy reveal">
+      <div>
+        <h2>Your meetings stay on your Mac.</h2>
+        <p class="sub">Speech recognition and translation run locally on Apple Silicon. Once the models are downloaded, MimiVox works fully offline.</p>
+      </div>
+      <ul class="checks">
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="11" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+          <div><b>No cloud, no accounts</b><span>No audio or text ever leaves the machine.</span></div>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 0 1 5 5v4a5 5 0 0 1-10 0V7a5 5 0 0 1 5-5z"/><path d="M3 3l18 18"/></svg>
+          <div><b>No recordings kept</b><span>Meeting audio isn't saved — just the transcript.</span></div>
+        </li>
+        <li>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          <div><b>Retention you choose</b><span>Keep transcripts forever, for a week, or not at all.</span></div>
+        </li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="install" style="padding-top:0">
+  <div class="wrap install">
+    <div class="reveal">
+      <h2>Up and running in three commands.</h2>
+      <p class="sub">Build the app, open <b>Home</b>, and download the caption models (about 1.7&nbsp;GB).</p>
+      <ul class="reqs">
+        <li>Apple Silicon</li>
+        <li>macOS 14+</li>
+        <li>Xcode 26+</li>
+        <li>uv</li>
+      </ul>
+    </div>
+    <div class="reveal">
+      <div class="term">
+        <div class="term-bar">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <button class="copy" id="copy" type="button">Copy</button>
+        </div>
+<pre id="cmds"><span class="p">$ </span>brew install uv ffmpeg
+<span class="p">$ </span>git clone https://github.com/alok-19/mimivox && cd mimivox
+<span class="p">$ </span>make app   <span class="c"># builds and opens MimiVox.app</span></pre>
+      </div>
+      <p class="note">No meeting handy? Run <code>make fixture</code> and pick the <b>Replay</b> source.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>MimiVox · MIT License</span>
+    <nav>
+      <a href="https://github.com/alok-19/mimivox">GitHub</a>
+      <a href="https://github.com/alok-19/mimivox/blob/main/docs/features.md">Docs</a>
+      <a href="https://github.com/alok-19/mimivox/blob/main/docs/privacy.md">Privacy</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  // Sticky nav border
+  const nav = document.getElementById('nav');
+  addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 8), { passive: true });
+
+  // Scroll reveal
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach((e, i) => {
+      if (!e.isIntersecting) return;
+      setTimeout(() => e.target.classList.add('in'), i * 60);
+      io.unobserve(e.target);
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+  // Copy install commands
+  document.getElementById('copy').addEventListener('click', async (ev) => {
+    const text = [...document.getElementById('cmds').childNodes]
+      .filter((n) => !(n.classList && n.classList.contains('p')))
+      .map((n) => n.textContent).join('').replace(/\s+#.*$/gm, '').trim();
+    try { await navigator.clipboard.writeText(text); ev.target.textContent = 'Copied'; }
+    catch { ev.target.textContent = 'Press ⌘C'; }
+    setTimeout(() => (ev.target.textContent = 'Copy'), 1600);
+  });
+
+  // Caption demo
+  const script = [
+    { s: 1, name: 'Tanaka', ja: '来週のリリースについて確認させてください。', en: "Let me confirm a few things about next week's release." },
+    { s: 2, name: 'Sato', ja: 'テストはほぼ完了していますが、一点だけ課題があります。', en: "Testing is almost done, but there's one open issue." },
+    { s: 1, name: 'Tanaka', ja: 'それは金曜日までに解決できそうですか？', en: 'Do you think we can resolve it by Friday?' },
+    { s: 2, name: 'Sato', ja: 'はい、木曜日には修正版を共有できます。', en: "Yes — I can share a fix on Thursday." },
+    { s: 1, name: 'Tanaka', ja: 'ありがとうございます。では予定通り進めましょう。', en: "Thanks. Then let's proceed as planned." },
+  ];
+  const box = document.getElementById('lines');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const MAX = 3;
+  let idx = 0;
+
+  function row(item) {
+    const el = document.createElement('div');
+    el.className = 'line';
+    el.innerHTML = `<div class="who"><b class="s${item.s}">${item.name}</b>Speaker ${item.s}</div>
+      <div><div class="ja" lang="ja">${item.ja}</div><div class="en"></div></div>`;
+    return el;
+  }
+  function trim() {
+    while (box.children.length > MAX) box.firstElementChild.remove();
+    [...box.children].forEach((c, i) => c.classList.toggle('old', i < box.children.length - 1));
+  }
+  function type(el, text, done) {
+    if (reduce) { el.textContent = text; return done(); }
+    const caret = '<span class="caret"></span>';
+    const words = text.split(' ');
+    let n = 0;
+    const tick = () => {
+      n++;
+      el.innerHTML = words.slice(0, n).join(' ') + (n < words.length ? caret : '');
+      n < words.length ? setTimeout(tick, 90 + Math.random() * 70) : done();
+    };
+    tick();
+  }
+  function next() {
+    const item = script[idx++ % script.length];
+    const el = row(item);
+    box.appendChild(el);
+    trim();
+    setTimeout(() => type(el.querySelector('.en'), item.en, () => setTimeout(next, 1800)), 650);
+  }
+  // Seed with finished lines so the window never looks empty
+  script.slice(0, 2).forEach((item) => {
+    const el = row(item);
+    el.querySelector('.en').textContent = item.en;
+    el.style.animation = 'none';
+    box.appendChild(el);
+  });
+  idx = 2;
+  trim();
+  setTimeout(next, 900);
+</script>
+</body>
+</html>
