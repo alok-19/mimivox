@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/mimivox-logo-uwu.png" alt="MimiVox" width="480">
+</p>
+
 # MimiVox — Real-time Meeting Translator
 
 On-device speech translation for meetings, on Apple Silicon via MLX. Japanese to English is the
