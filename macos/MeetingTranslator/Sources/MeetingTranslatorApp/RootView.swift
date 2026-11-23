@@ -10,13 +10,13 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(language: AppLanguage) -> String {
         switch self {
-        case .home: L10n.text("Home")
-        case .live: L10n.text("Live")
-        case .meetings: L10n.text("Meetings")
-        case .learn: L10n.text("Learn")
-        case .translate: L10n.text("Translate")
+        case .home: L10n.text("Home", language: language)
+        case .live: L10n.text("Live", language: language)
+        case .meetings: L10n.text("Meetings", language: language)
+        case .learn: L10n.text("Learn", language: language)
+        case .translate: L10n.text("Translate", language: language)
         }
     }
 
@@ -50,11 +50,11 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            Sidebar(selection: $selection)
+            Sidebar(selection: $selection, language: appLanguage)
                 .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
         } detail: {
             detail
-                .navigationTitle(selection.title)
+                .navigationTitle(selection.title(language: appLanguage))
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     BannerSlot(
                         onLive: selection == .live,
@@ -70,7 +70,7 @@ struct RootView: View {
     private var detail: some View {
         switch selection {
         case .home:
-            HomeView { selection = $0 }
+            HomeView(language: appLanguage) { selection = $0 }
         case .live:
             LiveView { id in
                 store.openMeeting(id: id)
@@ -88,17 +88,18 @@ struct RootView: View {
 
 private struct Sidebar: View {
     @Binding var selection: AppSection
+    let language: AppLanguage
 
     var body: some View {
         List(selection: Binding<AppSection?>(get: { selection }, set: { selection = $0 ?? selection })) {
             ForEach(AppSection.allCases) { section in
-                Label(section.title, systemImage: section.systemImage)
+                Label(section.title(language: language), systemImage: section.systemImage)
                     .tag(section)
             }
         }
         .listStyle(.sidebar)
         .navigationTitle("MimiVox")
-        .safeAreaInset(edge: .bottom, spacing: 0) { SidebarFooter() }
+        .safeAreaInset(edge: .bottom, spacing: 0) { SidebarFooter(language: language) }
     }
 }
 
@@ -113,8 +114,10 @@ private struct SidebarFooter: View {
     @Environment(\.openSettings) private var openSettings
     @Environment(\.selectSettingsTab) private var selectSettingsTab
 
+    let language: AppLanguage
+
     var body: some View {
-        let health = store.systemHealth
+        let health = store.systemHealth(language: language)
         HStack(spacing: 8) {
             Button {
                 selectSettingsTab(health.settingsTab)
@@ -133,18 +136,18 @@ private struct SidebarFooter: View {
             }
             .buttonStyle(.plain)
             .help(health.detail)
-            .accessibilityLabel(String(format: L10n.text("Status: %@"), health.title))
+            .accessibilityLabel(String(format: L10n.text("Status: %@", language: language), health.title))
             .accessibilityHint(health.detail)
 
             Button {
                 openSettings()
             } label: {
-                Label(L10n.text("Settings"), systemImage: "gearshape")
+                Label(L10n.text("Settings", language: language), systemImage: "gearshape")
                     .labelStyle(.iconOnly)
                     .font(.body)
             }
             .buttonStyle(.borderless)
-            .help(L10n.text("Settings (⌘,)"))
+            .help(L10n.text("Settings (⌘,)", language: language))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -171,59 +174,59 @@ struct SystemHealth: Equatable {
 }
 
 extension TranslatorStore {
-    var systemHealth: SystemHealth {
+    func systemHealth(language: AppLanguage) -> SystemHealth {
         if helperFailed {
             return SystemHealth(
-                level: .problem, title: L10n.text("Helper stopped"),
-                detail: L10n.text("The MimiVox helper is not running."), settingsTab: .general
+                level: .problem, title: L10n.text("Helper stopped", language: language),
+                detail: L10n.text("The MimiVox helper is not running.", language: language), settingsTab: .general
             )
         }
         guard let status else {
             return SystemHealth(
-                level: .info, title: L10n.text("Starting…"), detail: L10n.text("Starting the MimiVox helper."),
+                level: .info, title: L10n.text("Starting…", language: language), detail: L10n.text("Starting the MimiVox helper.", language: language),
                 settingsTab: .general)
         }
         let models = status.modelReadiness
         switch setup {
         case .needsDownload:
             return SystemHealth(
-                level: .attention, title: L10n.text("Setup needed"),
-                detail: L10n.text("Download the caption models to start a meeting."))
+                level: .attention, title: L10n.text("Setup needed", language: language),
+                detail: L10n.text("Download the caption models to start a meeting.", language: language))
         case .downloading:
             return SystemHealth(
-                level: .info, title: L10n.text("Downloading models…"),
-                detail: L10n.text("You can start a meeting when the download finishes."))
+                level: .info, title: L10n.text("Downloading models…", language: language),
+                detail: L10n.text("You can start a meeting when the download finishes.", language: language))
         case .loading:
             return SystemHealth(
-                level: .info, title: L10n.text("Checking models…"),
-                detail: L10n.text("MimiVox is checking the caption models."))
+                level: .info, title: L10n.text("Checking models…", language: language),
+                detail: L10n.text("MimiVox is checking the caption models.", language: language))
         case .failed:
             return SystemHealth(
-                level: .problem, title: L10n.text("Setup failed"),
-                detail: L10n.text("The caption models are not ready."))
+                level: .problem, title: L10n.text("Setup failed", language: language),
+                detail: L10n.text("The caption models are not ready.", language: language))
         case .ready, nil:
             break
         }
         if models.whisper?.ready == false || models.catTranslate?.ready == false {
             return SystemHealth(
-                level: .problem, title: L10n.text("Model missing"),
-                detail: L10n.text("Open Settings, then Models, to download the missing caption models.")
+                level: .problem, title: L10n.text("Model missing", language: language),
+                detail: L10n.text("Open Settings, then Models, to download the missing caption models.", language: language)
             )
         }
         if !models.ready {
             return SystemHealth(
-                level: .attention, title: L10n.text("Models need attention"),
-                detail: L10n.text("Open Settings, then Models, to check the caption models.")
+                level: .attention, title: L10n.text("Models need attention", language: language),
+                detail: L10n.text("Open Settings, then Models, to check the caption models.", language: language)
             )
         }
         if models.notesLlm?.ready == false {
             return SystemHealth(
-                level: .info, title: L10n.text("Notes model not downloaded"),
-                detail: L10n.text("Captions are ready. Download the notes model to use notes, titles, and questions.")
+                level: .info, title: L10n.text("Notes model not downloaded", language: language),
+                detail: L10n.text("Captions are ready. Download the notes model to use notes, titles, and questions.", language: language)
             )
         }
         return SystemHealth(
-            level: .good, title: L10n.text("Ready"), detail: L10n.text("The caption models are on this Mac."),
+            level: .good, title: L10n.text("Ready", language: language), detail: L10n.text("The caption models are on this Mac.", language: language),
             settingsTab: .models
         )
     }

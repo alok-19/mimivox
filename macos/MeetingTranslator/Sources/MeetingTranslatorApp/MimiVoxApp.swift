@@ -26,7 +26,7 @@ struct MimiVoxApp: App {
             .defaultSize(width: 560, height: 640)
 
         Settings {
-            SettingsRoot(model: delegate.model)
+            SettingsRoot(model: delegate.model, language: appLanguage)
                 .environment(\.locale, appLanguage.locale)
         }
 
@@ -190,7 +190,7 @@ private struct AppCommands: Commands {
         }
         CommandGroup(after: .sidebar) {
             ForEach(AppSection.allCases) { section in
-                Button(section.title) {
+                Button(section.title(language: language)) {
                     model.selectedSection = section
                     openWindow(id: MainWindow.id)
                 }

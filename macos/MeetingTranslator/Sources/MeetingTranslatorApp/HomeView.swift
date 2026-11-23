@@ -5,6 +5,7 @@ struct HomeView: View {
     @EnvironmentObject private var store: TranslatorStore
     @Environment(\.openSettings) private var openSettings
     @Environment(\.selectSettingsTab) private var selectSettingsTab
+    let language: AppLanguage
     let openSection: (AppSection) -> Void
 
     var body: some View {
@@ -12,13 +13,13 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 26) {
                 readiness
                 VStack(spacing: 0) {
-                    destination(.live, detail: L10n.text("View live transcription and translation."))
+                    destination(.live, detail: L10n.text("View live transcription and translation.", language: language))
                     Divider()
-                    destination(.meetings, detail: L10n.text("Review transcripts, notes, and glossary terms."))
+                    destination(.meetings, detail: L10n.text("Review transcripts, notes, and glossary terms.", language: language))
                     Divider()
-                    destination(.learn, detail: L10n.text("Study terms from your meetings."))
+                    destination(.learn, detail: L10n.text("Study terms from your meetings.", language: language))
                     Divider()
-                    destination(.translate, detail: L10n.text("Translate text between English and Japanese."))
+                    destination(.translate, detail: L10n.text("Translate text between English and Japanese.", language: language))
                 }
             }
             .frame(maxWidth: 620, alignment: .leading)
@@ -29,9 +30,9 @@ struct HomeView: View {
     }
 
     private var readiness: some View {
-        let health = store.systemHealth
+        let health = store.systemHealth(language: language)
         return VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.text("Meeting readiness"))
+            Text(L10n.text("Meeting readiness", language: language))
                 .font(.title2.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             GroupBox {
@@ -52,7 +53,7 @@ struct HomeView: View {
                     if store.showsSetupCard {
                         SetupStateView()
                     } else if !store.helperFailed {
-                        Button(L10n.text("Model Settings…")) {
+                        Button(L10n.text("Model Settings…", language: language)) {
                             selectSettingsTab(.models)
                             openSettings()
                         }
@@ -75,7 +76,7 @@ struct HomeView: View {
                     .frame(width: 24)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(section.title).font(.headline)
+                    Text(section.title(language: language)).font(.headline)
                     Text(detail).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -88,7 +89,7 @@ struct HomeView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(section.title)
+        .accessibilityLabel(section.title(language: language))
         .accessibilityHint(detail)
     }
 }

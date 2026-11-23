@@ -11,14 +11,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var title: String {
+    func title(language: AppLanguage) -> String {
         switch self {
-        case .general: L10n.text("General")
-        case .audio: L10n.text("Audio")
-        case .meetingApps: L10n.text("Meeting Apps")
-        case .glossary: L10n.text("Glossary")
-        case .models: L10n.text("Models")
-        case .privacy: L10n.text("Privacy")
+        case .general: L10n.text("General", language: language)
+        case .audio: L10n.text("Audio", language: language)
+        case .meetingApps: L10n.text("Meeting Apps", language: language)
+        case .glossary: L10n.text("Glossary", language: language)
+        case .models: L10n.text("Models", language: language)
+        case .privacy: L10n.text("Privacy", language: language)
         }
     }
 
@@ -47,12 +47,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsRoot: View {
     @ObservedObject var model: AppModel
+    let language: AppLanguage
 
     var body: some View {
         TabView(selection: $model.settingsTab) {
             ForEach(SettingsTab.allCases) { tab in
                 SettingsPage(tab: tab)
-                    .tabItem { Label(tab.title, systemImage: tab.systemImage) }
+                    .tabItem { Label(tab.title(language: language), systemImage: tab.systemImage) }
                     .tag(tab)
             }
         }
