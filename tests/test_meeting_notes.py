@@ -351,10 +351,9 @@ def test_api_errors(client, monkeypatch):
         raise RuntimeError("model not downloaded")
 
     monkeypatch.setattr(notes_llm, "generate", boom)
-    assert (
-        client.post("/api/session/ask", json={"session_id": "s1", "question": "q"}).status_code
-        == 503
-    )
+    r = client.post("/api/session/ask", json={"session_id": "s1", "question": "q"})
+    assert r.status_code == 503
+    assert r.json()["message"] == "The notes model is unavailable."
 
 
 def test_export_includes_cached_notes(client, tmp_path, monkeypatch):

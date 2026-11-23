@@ -891,24 +891,21 @@ async def api_session_start(body: dict):
             )
     elif source == "replay-file":
         wav = settings.get("replay_audio_path") or _DEFAULT_REPLAY
-        max_duration_s = resolve_replay_duration_s(settings)
     else:
-        # Treat unknown source as a WAV path (handy for direct paths).
-        candidate = Path(source)
-        if candidate.exists():
-            wav = str(candidate)
-            max_duration_s = resolve_replay_duration_s(settings)
-        else:
+        # Authenticated local clients can also provide a WAV path directly.
+        wav = source
+
+    if wav is not None:
+        try:
+            is_file = isinstance(wav, str) and Path(wav).is_file()
+        except (OSError, ValueError):
+            is_file = False
+        if not is_file:
             return JSONResponse(
-                {"message": f"Unknown source: {source}", "session_id": None},
+                {"message": "Select an existing WAV file for replay.", "session_id": None},
                 status_code=400,
             )
-
-    if wav and not Path(wav).exists():
-        return JSONResponse(
-            {"message": f"WAV not found: {wav}", "session_id": None},
-            status_code=400,
-        )
+        max_duration_s = resolve_replay_duration_s(settings)
 
     # Session-start-only: latency VAD/chunk presets + glossary refresh.
     # Cloud toggles are stored but never enable network translation.
@@ -977,9 +974,9 @@ async def api_session_start(body: dict):
             api_state.state = "completed"
             # Normal stop/cancel — do not keep mid-session faults as a sticky alarm.
             api_state.error = None
-        except Exception as exc:
+        except Exception:
             api_state.state = "failed"
-            api_state.error = str(exc)
+            api_state.error = "The audio or translation service stopped. Start a new session."
         else:
             if api_state.state not in ("failed",):
                 api_state.state = "completed"
@@ -1347,10 +1344,10 @@ async def api_session_notes(body: dict | None = None):
 
     try:
         notes, meta = await notes_service.notes_for(lines, body.get("chunk_budget"))
-    except meeting_notes.NotesError as exc:
-        return JSONResponse({"message": str(exc)}, status_code=502)
-    except Exception as exc:  # model missing / not downloadable
-        return JSONResponse({"message": f"Notes model unavailable: {exc}"}, status_code=503)
+    except meeting_notes.NotesError:
+        return JSONResponse({"message": "The notes model returned invalid JSON."}, status_code=502)
+    except Exception:
+        return JSONResponse({"message": "The notes model is unavailable."}, status_code=503)
 
     payload = notes.to_dict()
     if archived is not None:
@@ -1381,10 +1378,10 @@ async def api_session_ask(body: dict):
     live = api_state.is_running and sid == api_state.session_id
     try:
         answer, meta = await notes_service.ask(lines, question, live=live)
-    except meeting_notes.NotesError as exc:
-        return JSONResponse({"message": str(exc)}, status_code=502)
-    except Exception as exc:
-        return JSONResponse({"message": f"Notes model unavailable: {exc}"}, status_code=503)
+    except meeting_notes.NotesError:
+        return JSONResponse({"message": "The notes model returned invalid JSON."}, status_code=502)
+    except Exception:
+        return JSONResponse({"message": "The notes model is unavailable."}, status_code=503)
     return JSONResponse({**answer.to_dict(), "meta": {**meta, "lines": len(lines)}})
 
 
@@ -1411,14 +1408,15 @@ async def api_sessions_search(
         return JSONResponse(
             search_sessions(q=q, since=since, until=until, speaker=speaker, tag=tag, limit=limit)
         )
-    except ValueError as exc:
-        return JSONResponse({"message": str(exc)}, status_code=400)
+    except ValueError:
+        return JSONResponse({"message": "Use valid dates for the search range."}, status_code=400)
 
 
 @router.post("/sessions/{session_id}/tags")
 async def api_sessions_tags(session_id: str, body: dict[str, Any] | None = None):
     """Add and/or remove tags: {"add": ["budget"], "remove": ["old"]}."""
     from mimivox.session_archive import update_tags
+    from mimivox.session_library import MAX_TAG_LEN
 
     body = body or {}
     try:
@@ -1427,8 +1425,11 @@ async def api_sessions_tags(session_id: str, body: dict[str, Any] | None = None)
             [str(t) for t in body.get("add") or []],
             [str(t) for t in body.get("remove") or []],
         )
-    except ValueError as exc:
-        return JSONResponse({"message": str(exc)}, status_code=400)
+    except ValueError:
+        return JSONResponse(
+            {"message": f"Each tag must contain 1 to {MAX_TAG_LEN} characters."},
+            status_code=400,
+        )
     if tags is None:
         return JSONResponse({"message": f"Session not found: {session_id}"}, status_code=404)
     return JSONResponse({"session_id": session_id, "tags": tags})
@@ -1437,13 +1438,16 @@ async def api_sessions_tags(session_id: str, body: dict[str, Any] | None = None)
 @router.post("/sessions/{session_id}/title")
 async def api_sessions_title(session_id: str, body: dict[str, Any] | None = None):
     """Rename a meeting: {"title": "..."}; an empty title restores the generated one."""
-    from mimivox.session_archive import rename_session
+    from mimivox.session_archive import TITLE_MAX, rename_session
 
     raw = (body or {}).get("title")
     try:
         headline = rename_session(session_id, raw if isinstance(raw, str) else "")
-    except ValueError as exc:
-        return JSONResponse({"message": str(exc)}, status_code=400)
+    except ValueError:
+        return JSONResponse(
+            {"message": f"Use at most {TITLE_MAX} characters for the meeting title."},
+            status_code=400,
+        )
     if headline is None:
         return JSONResponse({"message": f"Session not found: {session_id}"}, status_code=404)
     return JSONResponse({"session_id": session_id, "headline": headline or None})
@@ -1544,12 +1548,12 @@ async def _translate_en_ja(text: str):
         ja = await translate_directed(text, "en-ja")
         back = await translate_directed(ja, "ja-en") if ja else ""
         return JSONResponse({"source_text": text, "translated_text": ja, "back_translation": back})
-    except Exception as exc:
+    except Exception:
         return JSONResponse(
             {
                 "source_text": text,
                 "translated_text": "",
-                "error": f"translate error: {exc}",
+                "error": "Could not translate the text.",
             },
             status_code=500,
         )
@@ -1580,8 +1584,8 @@ async def api_dictate(request: Request, hint: str = "ja"):
     try:
         async with lock:
             result = await asyncio.to_thread(dictation.transcribe, audio, hint)
-    except Exception as exc:
-        return JSONResponse({"message": f"Could not transcribe: {exc}"}, status_code=500)
+    except Exception:
+        return JSONResponse({"message": "Could not transcribe the audio."}, status_code=500)
     return JSONResponse({"text": result.text, "language": result.language})
 
 
@@ -1638,12 +1642,12 @@ async def api_translate(body: dict):
         translator = get_translator()
         en = (await translator.translate(ja, lambda _token: None))[0]
         return JSONResponse({"source_text": text, "translated_text": en or ""})
-    except Exception as exc:
+    except Exception:
         return JSONResponse(
             {
                 "source_text": text,
                 "translated_text": "",
-                "error": f"translate error: {exc}",
+                "error": "Could not translate the text.",
             },
             status_code=500,
         )
@@ -1695,9 +1699,12 @@ async def api_models(name: str, body: dict | None = None):
         )
 
     if cmd == "reset-cache":
+        scoped_path = body.get("path")
+        if scoped_path is None or scoped_path == "":
+            scoped_path = body.get("scoped_path")
         result = reset_cache(
-            yes=bool(body.get("yes")),
-            scoped_path=body.get("path") or body.get("scoped_path"),
+            yes=body.get("yes") is True,
+            scoped_path=scoped_path,
         )
         status = 200 if result.get("ok") else 400
         return JSONResponse(
@@ -1785,11 +1792,11 @@ async def api_models(name: str, body: dict | None = None):
                         error=err,
                         progress=None,
                     )
-            except Exception as exc:
+            except Exception:
                 _set_download_state(
                     busy=False,
-                    message=f"{cmd} failed: {exc}",
-                    error=str(exc),
+                    message=f"{cmd} failed",
+                    error="Could not download the models.",
                     progress=None,
                 )
 

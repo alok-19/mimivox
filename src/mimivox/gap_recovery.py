@@ -115,12 +115,12 @@ async def _safe(fn: Callable[[Any], Awaitable[str]], arg: Any) -> str | None:
 async def _recover_gap(
     session_id: str, gap: dict[str, Any], transcribe: Transcribe, translate: Translate
 ) -> list[dict[str, Any]] | None:
-    path = session_archive.gap_audio_file(session_id, gap.get("index") or 0)
-    if not gap.get("recoverable") or not path.exists():
+    if not gap.get("recoverable"):
         return None
     try:
+        path = session_archive.gap_audio_file(session_id, gap.get("index") or 0)
         audio = _load_wav(path)
-    except (OSError, ValueError, EOFError):
+    except (OSError, ValueError, TypeError, EOFError, wave.Error):
         return None
     ja = await _safe(transcribe, audio)
     if ja is None:

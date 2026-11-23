@@ -262,9 +262,10 @@ def download_models(
             if on_progress:
                 on_progress(f"notes_llm: downloading {NOTES_MODEL_ID}")
             results["notes_llm"] = {"path": _snapshot_download(NOTES_MODEL_ID, force=force)}
-        except Exception as exc:
-            results["errors"].append(f"notes_llm: {exc}")
-            results["notes_llm"] = {"error": str(exc)}
+        except Exception:
+            message = "Could not download the notes model."
+            results["errors"].append(message)
+            results["notes_llm"] = {"error": message}
         results["ok"] = not results["errors"]
         return results
 
@@ -281,11 +282,12 @@ def download_models(
             results[key] = {"path": path, "skipped": False}
             if on_progress:
                 on_progress(f"{key}: ready at {path}")
-        except Exception as exc:
-            results["errors"].append(f"{key}: {exc}")
-            results[key] = {"error": str(exc)}
+        except Exception:
+            message = f"Could not download {key}."
+            results["errors"].append(message)
+            results[key] = {"error": message}
             if on_progress:
-                on_progress(f"{key}: failed — {exc}")
+                on_progress(message)
 
     # Speaker labels are optional, so a failed speaker download never fails
     # the whole download; captions just run without speaker labels.
@@ -335,8 +337,8 @@ def _download_speaker_model(on_progress: Callable[[str], None] | None = None) ->
         fetched.replace(target)
         shutil.rmtree(staging, ignore_errors=True)
         return {"path": str(target), "skipped": False}
-    except Exception as exc:
-        return {"error": str(exc)}
+    except Exception:
+        return {"error": "Could not download the speaker model."}
 
 
 def reset_cache(
@@ -357,20 +359,23 @@ def reset_cache(
             ),
         }
 
-    target = Path(scoped_path) if scoped_path else MIMIVOX_MODELS_DIR
-    managed_root = MIMIVOX_MODELS_DIR.resolve()
+    if scoped_path is not None and not isinstance(scoped_path, str):
+        return {"ok": False, "message": "The cache path must be a string."}
+
     try:
+        managed_root = MIMIVOX_MODELS_DIR.parent.resolve() / MIMIVOX_MODELS_DIR.name
+        if MIMIVOX_MODELS_DIR.is_symlink():
+            return {"ok": False, "message": "Refusing to clear a linked model cache."}
+        target = Path(scoped_path) if scoped_path else managed_root
         resolved = target.resolve()
-    except OSError as exc:
-        return {"ok": False, "message": f"Invalid path: {exc}"}
+    except (OSError, RuntimeError, ValueError):
+        return {"ok": False, "message": "Invalid model cache path."}
 
     # Must be exactly managed root or a subpath of it.
-    if resolved != managed_root and managed_root not in resolved.parents:
+    if not resolved.is_relative_to(managed_root):
         return {
             "ok": False,
-            "message": (
-                f"Refusing to clear {resolved}: not under MimiVox-managed directory {managed_root}"
-            ),
+            "message": "Refusing to clear a path outside the MimiVox model cache.",
         }
 
     if get_download_state()["busy"]:
@@ -382,11 +387,14 @@ def reset_cache(
     # The speech, translation and notes models live in the shared HuggingFace
     # cache, so clearing the managed root alone would free nothing.
     repos = [_hf_repo_dir(r) for r in MIMIVOX_REPOS] if resolved == managed_root else []
-    targets = [t for t in [*repos, resolved] if t.exists()]
-    freed = sum(_tree_size(t) for t in targets)
-    for t in targets:
-        t.unlink() if t.is_file() else shutil.rmtree(t)
-    managed_root.mkdir(parents=True, exist_ok=True)
+    try:
+        targets = [t for t in [*repos, resolved] if t.exists()]
+        freed = sum(_tree_size(t) for t in targets)
+        for t in targets:
+            t.unlink() if t.is_file() else shutil.rmtree(t)
+        managed_root.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return {"ok": False, "message": "Could not clear the model cache."}
 
     removed = sum(t in targets for t in repos)
     if resolved == managed_root:
