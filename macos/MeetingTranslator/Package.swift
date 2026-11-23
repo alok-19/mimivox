@@ -22,6 +22,9 @@ let package = Package(
             targets: ["MeetingTranslatorCoreChecks"]
         ),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1")
+    ],
     targets: [
         .target(
             name: "MeetingTranslatorCore",
@@ -29,8 +32,17 @@ let package = Package(
         ),
         .executableTarget(
             name: "MeetingTranslatorApp",
-            dependencies: ["MeetingTranslatorCore"],
-            resources: [.copy("Resources")]
+            dependencies: [
+                "MeetingTranslatorCore",
+                .product(name: "Sparkle", package: "sparkle"),
+            ],
+            resources: [.copy("Resources")],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path",
+                    "-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks",
+                ])
+            ]
         ),
         .executableTarget(
             name: "MeetingTranslatorCoreChecks",

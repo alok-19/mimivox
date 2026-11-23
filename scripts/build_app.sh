@@ -12,6 +12,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PKG="$ROOT/macos/MeetingTranslator"
 APP="$ROOT/dist/MimiVox.app"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-}"
+SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY:-}"
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 command -v uv >/dev/null || { echo "uv not found (https://docs.astral.sh/uv/)" >&2; exit 1; }
@@ -45,11 +47,17 @@ BIN="$BUILD_DIR/MeetingTranslator"
 
 echo "==> assembling $APP"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 cp "$BIN" "$APP/Contents/MacOS/MeetingTranslator"
 cp "$PKG/BundleResources/Info.plist" "$APP/Contents/Info.plist"
 cp "$PKG/BundleResources/MeetingTranslator.icns" "$APP/Contents/Resources/"
 cp -R "$BUILD_DIR/MeetingTranslator_MeetingTranslatorCore.bundle" "$APP/Contents/Resources/"
+# SwiftPM builds Sparkle as a dynamic binary target. Keep the framework's internal symlinks.
+[[ -d "$BUILD_DIR/Sparkle.framework" ]] || { echo "Sparkle.framework was not built" >&2; exit 1; }
+ditto "$BUILD_DIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
+SPARKLE_LICENSE="$PKG/.build/checkouts/Sparkle/LICENSE"
+[[ -f "$SPARKLE_LICENSE" ]] || { echo "Sparkle LICENSE was not found in the SwiftPM checkout" >&2; exit 1; }
+cp "$SPARKLE_LICENSE" "$APP/Contents/Resources/Sparkle-LICENSE.txt"
 # In-app help and changelog (Help menu, About window).
 cp "$PKG"/Sources/MeetingTranslatorApp/Resources/*.md "$APP/Contents/Resources/"
 PB=/usr/libexec/PlistBuddy
@@ -62,6 +70,36 @@ if [[ -n "${MIMIVOX_MODEL_ENDPOINT:-}" ]]; then
   [[ "$MIMIVOX_MODEL_ENDPOINT" =~ ^https?://[^/?#]+ ]] || { echo "MIMIVOX_MODEL_ENDPOINT must be an http(s) URL" >&2; exit 1; }
   "$PB" -c "Add :MIMIVOXModelEndpoint string ${MIMIVOX_MODEL_ENDPOINT%/}" "$APP/Contents/Info.plist"
   echo "==> model downloads default to $MIMIVOX_MODEL_ENDPOINT"
+fi
+if [[ -n "$SPARKLE_FEED_URL" || -n "$SPARKLE_PUBLIC_KEY" ]]; then
+  [[ -n "$SPARKLE_FEED_URL" && -n "$SPARKLE_PUBLIC_KEY" ]] || {
+    echo "SPARKLE_FEED_URL and SPARKLE_PUBLIC_KEY must be set together" >&2
+    exit 1
+  }
+  SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY//$'\n'/}"
+  SPARKLE_PUBLIC_KEY="${SPARKLE_PUBLIC_KEY//$'\r'/}"
+  SPARKLE_FEED_URL="$SPARKLE_FEED_URL" python3 - <<'PY'
+import os
+from urllib.parse import urlsplit
+
+feed = urlsplit(os.environ["SPARKLE_FEED_URL"])
+if feed.scheme != "https" or not feed.hostname or feed.username or feed.password or feed.fragment:
+    raise SystemExit("SPARKLE_FEED_URL must be an HTTPS URL without credentials or a fragment")
+PY
+  SPARKLE_PUBLIC_KEY="$SPARKLE_PUBLIC_KEY" python3 - <<'PY'
+import base64
+import os
+
+try:
+    key = base64.b64decode(os.environ["SPARKLE_PUBLIC_KEY"], validate=True)
+except Exception as error:
+    raise SystemExit("SPARKLE_PUBLIC_KEY must be base64-encoded EdDSA public key data") from error
+if len(key) != 32:
+    raise SystemExit("SPARKLE_PUBLIC_KEY must decode to 32 bytes")
+PY
+  plutil -insert SUFeedURL -string "$SPARKLE_FEED_URL" "$APP/Contents/Info.plist"
+  plutil -insert SUPublicEDKey -string "$SPARKLE_PUBLIC_KEY" "$APP/Contents/Info.plist"
+  echo "==> configured signed Sparkle updates"
 fi
 
 echo "==> bundling python $PYTHON_VERSION (uv-managed python-build-standalone)"

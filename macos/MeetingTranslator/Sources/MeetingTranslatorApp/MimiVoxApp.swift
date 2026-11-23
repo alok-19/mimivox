@@ -1,5 +1,6 @@
 import AppKit
 import MeetingTranslatorCore
+import Sparkle
 import SwiftUI
 
 struct MimiVoxApp: App {
@@ -14,7 +15,7 @@ struct MimiVoxApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             AppCommands(model: delegate.model, language: appLanguage)
-            InfoCommands()
+            InfoCommands(updaterController: delegate.updaterController)
         }
 
         Window(InfoWindow.about.title, id: InfoWindow.about.id) { AboutView() }
@@ -54,6 +55,10 @@ enum MainWindow {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
+    let updaterController: SPUStandardUpdaterController? =
+        SparkleUpdateConfiguration.isAvailable
+        ? SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+        : nil
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -99,6 +104,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+}
+
+/// Sparkle requires a feed and its EdDSA key. Unconfigured SwiftPM and local builds stay usable.
+private enum SparkleUpdateConfiguration {
+    static var isAvailable: Bool {
+        guard
+            let feedURL = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
+            !feedURL.isEmpty,
+            let publicKey = Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") as? String,
+            !publicKey.isEmpty
+        else {
+            return false
+        }
+        return true
     }
 }
 

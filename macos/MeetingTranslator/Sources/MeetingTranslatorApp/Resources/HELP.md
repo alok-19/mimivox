@@ -11,6 +11,13 @@ transcripts, notes, and glossaries never leave it.
 - If the background server stops, select **Retry**.
 - macOS asks for microphone or system-audio permission the first time you use that source.
 
+## Update MimiVox
+
+- Choose **MimiVox → Check for Updates…** to check for a new version.
+- MimiVox does not install updates automatically.
+- If you install an update during a meeting, MimiVox asks whether to end the meeting before it quits.
+- Choose **Cancel** to keep the meeting open. Install the update after the meeting ends.
+
 ## Live captions
 
 - On **Live** (⌘1), pick a **Source** and a **Language** pair, then click **Start**

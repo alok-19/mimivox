@@ -132,7 +132,9 @@ elsewhere. Anything derived from a session should register
    git push origin v1.1.2
    ```
 
-GitHub Actions builds and publishes the Apple silicon ZIP with the in-app changelog as the release notes. Only stable `vMAJOR.MINOR.PATCH` tags trigger a release.
+GitHub Actions publishes the Apple silicon ZIP and signed Sparkle `appcast.xml` in one release. The app verifies EdDSA signatures on the feed and update archive. Only stable `vMAJOR.MINOR.PATCH` tags trigger a release. Configure the signing key before your next stable tag; see [Sparkle update setup](macos/README.md#sparkle-update-setup).
+
+Run **macOS release** manually from the Actions tab to build and verify the app and signed feed. A manual run uses an ephemeral key and does not publish a release.
 
 ## Docs
 
