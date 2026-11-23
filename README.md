@@ -5,7 +5,7 @@
 <p align="center">
   <b>Live meeting captions and translation, fully on your Mac.</b><br>
   Apple Silicon · MLX · no audio or text leaves the machine<br><br>
-  <a href="https://alok-19.github.io/mimivox/"><b>alok-19.github.io/mimivox</b></a>
+  <a href="https://mimivox.alok.jp/"><b>mimivox.alok.jp</b></a>
 </p>
 
 ---
