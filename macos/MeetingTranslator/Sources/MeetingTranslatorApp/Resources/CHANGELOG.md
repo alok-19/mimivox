@@ -9,7 +9,7 @@ sections of `- ` bullets, newest release first. Collect upcoming changes under
 version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 (`MeetingTranslatorCoreChecks` fails if the two differ).
 
-## [Unreleased]
+## [1.1.2] - 2026-11-24
 
 ### Added
 - Check for and install updates from the MimiVox menu.
