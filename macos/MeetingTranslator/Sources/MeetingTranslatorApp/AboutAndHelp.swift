@@ -1,5 +1,6 @@
 import AppKit
 import MeetingTranslatorCore
+import Sparkle
 import SwiftUI
 
 /// The About, Help, and Changelog windows, each a single-instance `Window` scene.
@@ -19,11 +20,19 @@ enum InfoWindow: String, CaseIterable {
 
 /// Replaces the stock About item (which ignores the changelog) and the empty Help menu.
 struct InfoCommands: Commands {
+    let updaterController: SPUStandardUpdaterController?
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button(InfoWindow.about.title) { open(.about) }
+        }
+        if let updaterController {
+            CommandGroup(after: .appInfo) {
+                Button(L10n.text("Check for Updates…")) {
+                    updaterController.checkForUpdates(nil)
+                }
+            }
         }
         CommandGroup(replacing: .help) {
             Button(InfoWindow.help.title) { open(.help) }

@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: macos-release-${{ github.ref }}
+  group: macos-release
   cancel-in-progress: false
 
 jobs:
@@ -66,6 +66,37 @@ jobs:
           command -v uv || brew install uv
           uv lock --check
 
+      - name: Prepare Sparkle signing key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.SPARKLE_PRIVATE_KEY || '' }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            SPARKLE_PRIVATE_KEY="$(openssl rand -base64 32 | tr -d '\r\n')"
+            umask 077
+            printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-test-private-key"
+          else
+            [[ -n "$SPARKLE_PRIVATE_KEY" && -n "$SPARKLE_PUBLIC_KEY" ]] || {
+              echo "Set the SPARKLE_PRIVATE_KEY Actions secret and SPARKLE_PUBLIC_KEY Actions variable before a stable release." >&2
+              exit 1
+            }
+          fi
+          SPARKLE_PRIVATE_KEY="$(printf '%s' "$SPARKLE_PRIVATE_KEY" | tr -d '\r\n')"
+          SPARKLE_PUBLIC_KEY="$(printf '%s' "$SPARKLE_PUBLIC_KEY" | tr -d '\r\n')"
+          derived_public_key="$(SPARKLE_PRIVATE_KEY="$SPARKLE_PRIVATE_KEY" swift scripts/sparkle_public_key.swift)"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            SPARKLE_PUBLIC_KEY="$derived_public_key"
+          fi
+          [[ "$derived_public_key" == "$SPARKLE_PUBLIC_KEY" ]] || {
+            echo "SPARKLE_PRIVATE_KEY does not match SPARKLE_PUBLIC_KEY." >&2
+            exit 1
+          }
+          echo "::add-mask::$SPARKLE_PRIVATE_KEY"
+          {
+            echo "SPARKLE_PUBLIC_KEY=$SPARKLE_PUBLIC_KEY"
+            echo "SPARKLE_FEED_URL=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/latest/download/appcast.xml"
+          } >> "$GITHUB_ENV"
+
       - name: Build and verify the macOS ZIP
         id: package
         env:
@@ -73,7 +104,14 @@ jobs:
         run: |
           scripts/build_app.sh
           app=dist/MimiVox.app
-          zip="dist/MimiVox-$VERSION-macos-arm64.zip"
+          assets="$RUNNER_TEMP/release-assets"
+          mkdir -p "$assets"
+          zip="$assets/MimiVox-$VERSION-macos-arm64.zip"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$app/Contents/Info.plist")" = "$SPARKLE_FEED_URL"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
+          test -L "$app/Contents/Frameworks/Sparkle.framework/Versions/Current"
+          test -f "$app/Contents/Resources/Sparkle-LICENSE.txt"
+          otool -L "$app/Contents/MacOS/MeetingTranslator" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle'
           test "$(lipo -archs "$app/Contents/MacOS/MeetingTranslator")" = arm64
           python="$app/Contents/Resources/python/bin/python3"
           test "$("$python" -I -c 'from importlib.metadata import version; print(version("mimivox"))')" = "$VERSION"
@@ -83,15 +121,90 @@ jobs:
           codesign --verify --deep --strict "$extracted"
           cmp "$extracted/Contents/Resources/CHANGELOG.md" \
             macos/MeetingTranslator/Sources/MeetingTranslatorApp/Resources/CHANGELOG.md
+          codesign -dv --verbose=2 "$extracted" 2>&1 | grep -F 'Signature=adhoc'
           shasum -a 256 "$zip"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Generate and verify the signed Sparkle appcast
+        id: appcast
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.SPARKLE_PRIVATE_KEY || '' }}
+          VERSION: ${{ steps.version.outputs.number }}
+          ZIP: ${{ steps.package.outputs.zip }}
+        run: |
+          assets="${ZIP%/*}"
+          zip_name="${ZIP##*/}"
+          cp "$RUNNER_TEMP/release-notes.md" "$assets/${zip_name%.zip}.md"
+          private_key="$SPARKLE_PRIVATE_KEY"
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            private_key="$(cat "$RUNNER_TEMP/sparkle-test-private-key")"
+          fi
+          private_key="$(printf '%s' "$private_key" | tr -d '\r\n')"
+          derived_public_key="$(SPARKLE_PRIVATE_KEY="$private_key" swift scripts/sparkle_public_key.swift)"
+          [[ "$derived_public_key" == "$SPARKLE_PUBLIC_KEY" ]] || {
+            echo "The Sparkle signing key does not match the key in the app bundle." >&2
+            exit 1
+          }
+          generator="macos/MeetingTranslator/.build/artifacts/sparkle/Sparkle/bin/generate_appcast"
+          verifier="macos/MeetingTranslator/.build/artifacts/sparkle/Sparkle/bin/sign_update"
+          test -x "$generator"
+          test -x "$verifier"
+          download_prefix="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/v$VERSION/"
+          printf '%s' "$private_key" | "$generator" \
+            --ed-key-file - --embed-release-notes --maximum-deltas 0 \
+            --download-url-prefix "$download_prefix" \
+            -o "$assets/appcast.xml" "$assets"
+          printf '%s' "$private_key" | "$verifier" --verify --ed-key-file - "$assets/appcast.xml"
+          archive_signature="$(python3 - "$assets/appcast.xml" "$VERSION" "$download_prefix$zip_name" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          feed_path, version, archive_url = sys.argv[1:]
+          sparkle = "http://www.andymatuschak.org/xml-namespaces/sparkle"
+          root = ET.parse(feed_path).getroot()
+          items = root.findall(".//item")
+          if len(items) != 1:
+              raise SystemExit("Sparkle appcast must contain one release item")
+          item = items[0]
+          if item.findtext(f"{{{sparkle}}}version") != version:
+              raise SystemExit("Sparkle appcast version does not match the bundle")
+          enclosures = item.findall("enclosure")
+          if len(enclosures) != 1:
+              raise SystemExit("Sparkle appcast must contain one release archive")
+          enclosure = enclosures[0]
+          if enclosure.get("url") != archive_url:
+              raise SystemExit("Sparkle appcast archive URL does not match the versioned ZIP")
+          signature = enclosure.get(f"{{{sparkle}}}edSignature")
+          if not signature:
+              raise SystemExit("Sparkle appcast archive does not have an EdDSA signature")
+          print(signature)
+          PY
+          )"
+          printf '%s' "$private_key" | "$verifier" --verify --ed-key-file - "$ZIP" "$archive_signature"
+          echo "Verified signed Sparkle appcast and ZIP for $VERSION"
+          echo "appcast=$assets/appcast.xml" >> "$GITHUB_OUTPUT"
 
       - name: Publish GitHub release
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           ZIP: ${{ steps.package.outputs.zip }}
+          APPCAST: ${{ steps.appcast.outputs.appcast }}
           VERSION: ${{ steps.version.outputs.number }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$ZIP" --verify-tag \
+          latest_tag="$(gh release view --json tagName --jq .tagName)"
+          latest_version="${latest_tag#v}"
+          python3 - "$VERSION" "$latest_version" <<'PY'
+          import sys
+
+          version = tuple(map(int, sys.argv[1].split(".")))
+          latest = tuple(map(int, sys.argv[2].split(".")))
+          if version <= latest:
+              raise SystemExit("Refusing to publish a stale or duplicate MimiVox release")
+          PY
+          gh release create "$GITHUB_REF_NAME" "$ZIP" "$APPCAST" --verify-tag --latest \
             --title "MimiVox $VERSION" --notes-file "$RUNNER_TEMP/release-notes.md"
+
+      - name: Remove temporary Sparkle key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sparkle-test-private-key"

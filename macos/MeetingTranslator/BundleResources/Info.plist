@@ -32,5 +32,17 @@
     <string>MimiVox records the audio your Mac plays (e.g. a Zoom call) to transcribe and translate it on-device.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>MimiVox runs a local helper on loopback to transcribe and translate on-device.</string>
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUSignedFeedFailureExpirationInterval</key>
+    <integer>0</integer>
 </dict>
 </plist>

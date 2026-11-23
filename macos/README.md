@@ -171,6 +171,45 @@ Both are Markdown files in `Sources/MeetingTranslatorApp/Resources/`, bundled in
 Update the version in `pyproject.toml` and `BundleResources/Info.plist`. Run `uv lock` and
 add the release entry to the in-app changelog. Push the commit, then push its stable
 version tag (for example, `v1.1.2`). GitHub Actions builds the Apple silicon app, verifies
-the ZIP, and publishes it with the in-app changelog as the release notes.
+the ZIP and signed Sparkle appcast, then publishes both assets in the same GitHub release.
+The appcast points to that release's versioned ZIP. GitHub serves the appcast at the stable
+`https://github.com/alok-19/mimivox/releases/latest/download/appcast.xml` URL.
 
-Run **macOS release** manually from the Actions tab to check the build without publishing.
+Set up the signing key before the next stable release. The manual workflow uses an ephemeral
+key, verifies the app and signed appcast, and does not publish a release.
+
+## Sparkle update setup
+
+MimiVox uses Sparkle 2.10.1 and EdDSA signatures for updates. You do not need a paid Apple
+Developer membership. The app and its helper keep their ad-hoc signatures, and the app is not
+notarized. Downloaded release builds still need the Gatekeeper steps above.
+
+The app shows **MimiVox → Check for Updates…** only when its bundle has both `SUFeedURL` and
+`SUPublicEDKey`. `scripts/build_app.sh` reads these from `SPARKLE_FEED_URL` and
+`SPARKLE_PUBLIC_KEY`. Set both values or leave both unset. The build script accepts only an
+HTTPS feed URL. Local builds without the values have no update menu item.
+
+Create one EdDSA key pair for stable releases. Run these commands from the repository root.
+Sparkle stores the private key in your login Keychain. The GitHub CLI stores the private
+key as an Actions secret and the public key as an Actions variable.
+
+```bash
+swift package --package-path macos/MeetingTranslator resolve
+tools=macos/MeetingTranslator/.build/artifacts/sparkle/Sparkle/bin
+"$tools/generate_keys" --account mimivox-release
+(
+  set -e
+  key_dir="$(mktemp -d)"
+  trap 'rm -f "$key_dir/private.key"; rmdir "$key_dir"' EXIT
+  umask 077
+  "$tools/generate_keys" --account mimivox-release -x "$key_dir/private.key"
+  gh secret set SPARKLE_PRIVATE_KEY < "$key_dir/private.key"
+  gh variable set SPARKLE_PUBLIC_KEY --body "$("$tools/generate_keys" --account mimivox-release -p)"
+)
+```
+
+Keep a secure backup of the private key. Use the same key for subsequent releases.
+The release workflow checks that the keys match before it builds the app.
+
+Users of earlier versions must download the first release with Sparkle. For subsequent
+updates, choose **MimiVox → Check for Updates…** in the app.
