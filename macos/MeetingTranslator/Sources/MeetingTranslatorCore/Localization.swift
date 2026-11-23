@@ -49,13 +49,22 @@ public enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum L10n {
+    private static let resourceBundle: Bundle? = {
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            return Bundle.main.url(
+                forResource: "MeetingTranslator_MeetingTranslatorCore", withExtension: "bundle"
+            ).flatMap(Bundle.init(url:))
+        }
+        return .module
+    }()
+
     public static func text(_ sourceEnglish: String) -> String {
         text(sourceEnglish, language: .selected)
     }
 
     public static func text(_ sourceEnglish: String, language: AppLanguage) -> String {
         guard let code = language.localizationCode,
-            let localizationPath = Bundle.module.path(forResource: code, ofType: "lproj"),
+            let localizationPath = resourceBundle?.path(forResource: code, ofType: "lproj"),
             let localizationBundle = Bundle(path: localizationPath)
         else {
             return sourceEnglish

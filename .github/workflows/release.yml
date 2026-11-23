@@ -55,9 +55,15 @@ jobs:
           }
           cat >> "$RUNNER_TEMP/release-notes.md" <<'NOTES'
 
-          ### macOS download
+          ### Install on macOS
 
-          The ZIP contains the Apple silicon app. The app uses an ad-hoc signature. See the [macOS guide](https://github.com/alok-19/mimivox/blob/main/macos/README.md) for Gatekeeper instructions.
+          Requires an Apple silicon Mac with macOS 14 or later.
+
+          1. Download the macOS ZIP under **Assets**. Double-click the ZIP in Finder to extract it.
+          2. Quit any open copy of MimiVox. Move **MimiVox.app** to **Applications** and open it.
+          3. If macOS blocks the first launch, go to **System Settings → Privacy & Security**. Click **Open Anyway** for MimiVox and confirm. [Apple's instructions](https://support.apple.com/en-us/102445)
+
+          Use **MimiVox → Check for Updates…** for future updates.
           NOTES
           echo "number=$version" >> "$GITHUB_OUTPUT"
 
@@ -111,14 +117,16 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$app/Contents/Info.plist")" = "$SPARKLE_PUBLIC_KEY"
           test -L "$app/Contents/Frameworks/Sparkle.framework/Versions/Current"
           test -f "$app/Contents/Resources/Sparkle-LICENSE.txt"
-          otool -L "$app/Contents/MacOS/MeetingTranslator" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle'
-          test "$(lipo -archs "$app/Contents/MacOS/MeetingTranslator")" = arm64
+          otool -L "$app/Contents/MacOS/MimiVox" | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle'
+          test "$(lipo -archs "$app/Contents/MacOS/MimiVox")" = arm64
           python="$app/Contents/Resources/python/bin/python3"
           test "$("$python" -I -c 'from importlib.metadata import version; print(version("mimivox"))')" = "$VERSION"
           ditto -c -k --keepParent "$app" "$zip"
           ditto -x -k "$zip" "$RUNNER_TEMP/verify"
           extracted="$RUNNER_TEMP/verify/MimiVox.app"
           codesign --verify --deep --strict "$extracted"
+          test "$(plutil -extract CFBundleExecutable raw "$extracted/Contents/Info.plist")" = MimiVox
+          "$extracted/Contents/MacOS/MimiVox" --check-bundled-localization
           cmp "$extracted/Contents/Resources/CHANGELOG.md" \
             macos/MeetingTranslator/Sources/MeetingTranslatorApp/Resources/CHANGELOG.md
           codesign -dv --verbose=2 "$extracted" 2>&1 | grep -F 'Signature=adhoc'

@@ -14,6 +14,10 @@ version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 ### Added
 - Check for and install updates from the MimiVox menu.
 
+### Fixed
+- Open the app when the display language is Japanese.
+- Show the MimiVox name in macOS process lists and crash reports.
+
 ## [1.1.1] - 2026-11-23
 
 ### Changed

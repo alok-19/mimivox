@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>MimiVox</string>
     <key>CFBundleExecutable</key>
-    <string>MeetingTranslator</string>
+    <string>MimiVox</string>
     <key>CFBundleIdentifier</key>
     <string>local.meeting-translator.swiftui.preview</string>
     <key>CFBundleIconFile</key>

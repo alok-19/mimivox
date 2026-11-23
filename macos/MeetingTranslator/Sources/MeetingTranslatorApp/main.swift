@@ -1,4 +1,13 @@
 import AppKit
+import MeetingTranslatorCore
+
+if CommandLine.arguments.contains("--check-bundled-localization") {
+    guard L10n.text("Home", language: .japanese) == "ホーム" else {
+        print("MimiVox could not load the Japanese translation for Home.")
+        exit(1)
+    }
+    exit(0)
+}
 
 // Dev tool: render every screen to PNGs and exit, without the helper.
 if let options = SnapshotRunner.Options(arguments: CommandLine.arguments) {
