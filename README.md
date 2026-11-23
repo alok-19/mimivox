@@ -52,6 +52,8 @@ xattr -dr com.apple.quarantine /Applications/MimiVox.app
 
 ## Develop
 
+Use Python 3.11 or later for local development.
+
 ```bash
 make setup      # install deps into .venv (uv)
 make app-dev    # run the macOS app with its local helper
