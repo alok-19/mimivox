@@ -1706,6 +1706,24 @@ func checkLanguagePairs() throws {
     try expect((bare as? [String: Any])?["source_lang"] == nil, "pair omitted when not given")
 }
 
+func checkActiveModels() throws {
+    var wire = try unwrap(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(MeetingStatusResponse(state: "idle"))) as? [String: Any],
+        "status json")
+    let idle = try JSONDecoder().decode(
+        MeetingStatusResponse.self, from: JSONSerialization.data(withJSONObject: wire))
+    try expect(idle.activeModels == nil, "a status without active_models decodes to nil")
+
+    wire["active_models"] = [
+        "asr": ["id": "basyauma-tech/Haas-ja-v1.0-mlx-8bit", "label": "Haas-ja"],
+        "translation": ["id": "hotchpotch/CAT-Translate-1.4b-mlx-q4", "label": "CAT-Translate"],
+    ]
+    let live = try JSONDecoder().decode(
+        MeetingStatusResponse.self, from: JSONSerialization.data(withJSONObject: wire))
+    try expect(live.activeModels?.asr.id == "basyauma-tech/Haas-ja-v1.0-mlx-8bit", "active_models carries the ASR id")
+    try expect(live.activeModels?.summary == "Haas-ja → CAT-Translate", "summary reads speech then translation")
+}
+
 func checkLiveStatus() throws {
     func status(_ state: String, audio: Bool = true, degraded: Bool = false, error: String? = nil)
         -> MeetingStatusResponse
@@ -1907,6 +1925,7 @@ enum MeetingTranslatorCoreChecks {
         try checkRevisionDecoding()
         try checkLiveTranscript()
         try checkLiveStatus()
+        try checkActiveModels()
         try checkArchivedSessionSummary()
         try checkMeetingAutostartDetector()
         try checkCaptureScope()

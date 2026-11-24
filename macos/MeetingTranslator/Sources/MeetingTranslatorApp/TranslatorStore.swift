@@ -310,7 +310,10 @@ final class TranslatorStore: ObservableObject {
 
     var liveSubtitle: String {
         if showsSetupCard { return "Setting up" }
-        if isSessionActive { return (activeSource ?? selectedLiveSource).title }
+        if isSessionActive {
+            let source = (activeSource ?? selectedLiveSource).title
+            return status?.activeModels.map { "\(source) · \($0.summary)" } ?? source
+        }
         if liveStatus == .failed { return "" }
         return hasEndedSession ? endedSummary : "Ready"
     }
