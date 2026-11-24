@@ -14,6 +14,13 @@ version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 ### Changed
 - Japanese captions now use the Haas-ja speech model by default, a model trained for Japanese that runs much faster than Whisper. Switch back to Whisper under Settings → Models. Other languages and dictation still use Whisper. Updating downloads the new model (about 1.2 GB).
 
+## [1.1.3] - 2026-11-24
+
+### Fixed
+- Replay converts recordings in a private temporary folder and removes it when conversion finishes or fails.
+- Meeting archive and model cache operations check their file paths before changing stored data.
+- The local helper gives clear error messages without exposing internal exception details.
+
 ## [1.1.2] - 2026-11-24
 
 ### Added
