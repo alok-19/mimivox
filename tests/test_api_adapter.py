@@ -78,6 +78,25 @@ def test_final_event_emits_asr_and_translation():
     assert tr["is_late"] is False
 
 
+def test_final_with_empty_translation_marks_the_line_finished():
+    state = APISessionState()
+    state.handle_pipeline_event({"kind": "final", "ts": "00:03", "ja": "私は", "en": ""})
+    state.handle_pipeline_event(
+        {
+            "kind": "final",
+            "ts": "00:05",
+            "ja": "飛ばした",
+            "en": "",
+            "translation_skipped": "catch_up",
+        }
+    )
+    state.handle_pipeline_event({"kind": "final", "ts": "00:07", "ja": "次", "en": "Next."})
+
+    asrs = [e for e in state.events if e["type"] == "AsrCompletedEvent"]
+    assert [e.get("translation_empty") for e in asrs] == [True, None, None]
+    assert [e["type"] for e in state.events].count("TranslationCompletedEvent") == 1
+
+
 def test_late_translation_flag():
     state = APISessionState()
     state.handle_pipeline_event(

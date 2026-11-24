@@ -35,6 +35,20 @@ def test_clean_cat_output_strips_markers():
     assert translate.clean_cat_output(raw) == "Hello world"
 
 
+def test_clean_cat_keeps_text_after_a_leading_label():
+    en, leaked, stripped = translate._clean_cat("English: I.")
+    assert (en, leaked, stripped) == ("I", False, False)
+
+
+def test_clean_cat_leading_label_is_case_insensitive_and_keeps_sentences():
+    assert translate._clean_cat("english: Good morning, everyone.")[0] == "Good morning, everyone"
+
+
+def test_clean_cat_still_truncates_a_marker_after_the_text():
+    en, leaked, _ = translate._clean_cat("Hello world. English: Translate the following")
+    assert (en, leaked) == ("Hello world", True)
+
+
 def test_prompt_and_tokens_short():
     content, max_tok = translate._prompt_and_tokens("こんにちは")
     assert max_tok == 16

@@ -1634,12 +1634,16 @@ func checkLatencyHealth() async throws {
              {"type":"AsrCompletedEvent","index":1,"start":0,"end":2,"text":"最初"},
              {"type":"TranslationCompletedEvent","index":1,"start":0,"end":2,"text":"First.","source_indexes":[1]},
              {"type":"AsrCompletedEvent","index":2,"start":2,"end":4,"text":"翻訳なし","translation_skipped":"catch_up"},
-             {"type":"CaptionGapEvent","index":3,"start":4,"end":9,"recoverable":true,"message":"Skipped 5s of speech while catching up"}]
+             {"type":"CaptionGapEvent","index":3,"start":4,"end":9,"recoverable":true,"message":"Skipped 5s of speech while catching up"},
+             {"type":"AsrCompletedEvent","index":4,"start":9,"end":10,"text":"私は","translation_empty":true}]
             """#.utf8))
     try expect(events[0].health?.state == .overloaded, "LatencyHealthEvent carries the snapshot")
     let rows = events.bilingualTranscriptRows
-    try expect(rows.count == 3, "gap row sits beside the two caption rows")
+    try expect(rows.count == 4, "gap row sits beside the three caption rows")
     try expect(rows[0].skipNote == nil, "translated row has no skip note")
+    try expect(
+        !rows[0].hasNoTranslation && !rows[1].hasNoTranslation && rows[3].hasNoTranslation,
+        "only a finished line with an empty translation reads as no translation")
     try expect(rows[1].skipNote == "Translation skipped while catching up", "untranslated row says so")
     try expect(
         rows[2].gap?.recoverable == true && rows[2].skipNote == "Skipped 5s of speech while catching up",
@@ -1700,6 +1704,24 @@ func checkLanguagePairs() throws {
         "start request carries the pair")
     let bare = try JSONSerialization.jsonObject(with: JSONEncoder().encode(StartSessionRequest(source: "microphone")))
     try expect((bare as? [String: Any])?["source_lang"] == nil, "pair omitted when not given")
+}
+
+func checkActiveModels() throws {
+    var wire = try unwrap(
+        JSONSerialization.jsonObject(with: JSONEncoder().encode(MeetingStatusResponse(state: "idle"))) as? [String: Any],
+        "status json")
+    let idle = try JSONDecoder().decode(
+        MeetingStatusResponse.self, from: JSONSerialization.data(withJSONObject: wire))
+    try expect(idle.activeModels == nil, "a status without active_models decodes to nil")
+
+    wire["active_models"] = [
+        "asr": ["id": "basyauma-tech/Haas-ja-v1.0-mlx-8bit", "label": "Haas-ja"],
+        "translation": ["id": "hotchpotch/CAT-Translate-1.4b-mlx-q4", "label": "CAT-Translate"],
+    ]
+    let live = try JSONDecoder().decode(
+        MeetingStatusResponse.self, from: JSONSerialization.data(withJSONObject: wire))
+    try expect(live.activeModels?.asr.id == "basyauma-tech/Haas-ja-v1.0-mlx-8bit", "active_models carries the ASR id")
+    try expect(live.activeModels?.summary == "Haas-ja → CAT-Translate", "summary reads speech then translation")
 }
 
 func checkLiveStatus() throws {
@@ -1903,6 +1925,7 @@ enum MeetingTranslatorCoreChecks {
         try checkRevisionDecoding()
         try checkLiveTranscript()
         try checkLiveStatus()
+        try checkActiveModels()
         try checkArchivedSessionSummary()
         try checkMeetingAutostartDetector()
         try checkCaptureScope()

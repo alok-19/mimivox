@@ -177,9 +177,15 @@ enum SnapshotFixtures {
     ) -> MeetingStatusResponse {
         MeetingStatusResponse(
             state: state, sessionID: state == "idle" ? nil : "live-0001", settings: settings(learning: learning),
-            modelReadiness: readiness, privacy: privacy, health: health, performanceSummary: summary, error: error
+            modelReadiness: readiness, privacy: privacy, health: health, performanceSummary: summary, error: error,
+            activeModels: state == "listening" ? activeModels : nil
         )
     }
+
+    static let activeModels = ActiveModels(
+        asr: ActiveModel(id: "basyauma-tech/Haas-ja-v1.0-mlx-8bit", label: "Haas-ja"),
+        translation: ActiveModel(id: "hotchpotch/CAT-Translate-1.4b-mlx-q4", label: "CAT-Translate")
+    )
 
     static let archived = [
         ArchivedSessionSummary(

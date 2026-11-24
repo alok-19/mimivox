@@ -535,7 +535,7 @@ private struct CaptionHistoryView: View {
                 english: row.english?.text,
                 japanese: row.japanese?.text,
                 tokens: row.japanese?.tokens,
-                placeholder: row.skipNote ?? (live ? "Translating…" : "—"),
+                placeholder: row.skipNote ?? (row.hasNoTranslation ? "No translation" : live ? "Translating…" : "—"),
                 confidence: row.flaggedConfidence
             )
         }

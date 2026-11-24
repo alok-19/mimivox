@@ -22,6 +22,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from mimivox import notes_service, session_archive
+from mimivox.active_models import active_models
 from mimivox.audio import PushAudioSource
 from mimivox.catch_up import apply_catch_up
 from mimivox.config import DATA_DIR, shared_mlx_lock
@@ -174,6 +175,7 @@ class APISessionState:
         self._models_task: asyncio.Task | None = None
         self.session_label: str | None = None
         self.session_pair: LanguagePair = DEFAULT_PAIR
+        self.active_models: dict[str, dict[str, str]] = {}
         self.started_at_iso: str | None = None
         self._archived: bool = False
         # Line (ASR) indexes the viewer pinned this session; archived and exported.
@@ -374,6 +376,8 @@ class APISessionState:
             "performance_summary": perf,
             "error": exposed_error,
         }
+        if active and self.active_models:
+            payload["active_models"] = self.active_models
         cloud_msg = cloud_status_message(self.settings)
         if cloud_msg:
             payload["message"] = cloud_msg
@@ -599,6 +603,8 @@ class APISessionState:
                 }
                 if event.get("translation_skipped"):
                     asr_ev["translation_skipped"] = event["translation_skipped"]
+                elif not en:
+                    asr_ev["translation_empty"] = True
                 if asr_latency_s is not None:
                     asr_ev["asr_latency_s"] = asr_latency_s
                 self.emit(asr_ev)
@@ -916,7 +922,9 @@ async def api_session_start(body: dict):
         {**settings, "source_lang": pair.source, "target_lang": pair.target}, glossary_profile
     )
 
+    asr_model_id = resolve_asr_model_live(settings) if live else None
     api_state.session_pair = pair
+    api_state.active_models = active_models(pair, asr_model_id)
     api_state.session_id = str(uuid.uuid4())
     api_state.state = "listening"
     api_state.error = None
@@ -956,7 +964,7 @@ async def api_session_start(body: dict):
             sse_broadcast=api_state.handle_pipeline_event,
             control=api_state.control,
             max_duration_s=max_duration_s,
-            asr_model_id=resolve_asr_model_live(settings) if live else None,
+            asr_model_id=asr_model_id,
             partial_en_enabled=_partial_en_enabled(settings),
             save_log=saves_transcripts(settings),
             show_transcript=False,
