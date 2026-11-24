@@ -109,10 +109,15 @@ def _clean_cat(raw: str) -> tuple[str, bool, bool]:
     raw_lower = raw.lower()
     for marker in _PROMPT_LEAK_MARKERS:
         idx = raw_lower.find(marker.lower())
-        if idx != -1:
-            leaked = True
-            raw = raw[:idx].strip()
-            raw_lower = raw_lower[:idx].strip()
+        if idx == -1:
+            continue
+        if marker.endswith(":") and not raw_lower[:idx].strip():
+            raw = raw[idx + len(marker) :].strip()
+            raw_lower = raw_lower[idx + len(marker) :].strip()
+            continue
+        leaked = True
+        raw = raw[:idx].strip()
+        raw_lower = raw_lower[:idx].strip()
     lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
     result = " ".join(lines)
     if len(result.split()) < 2:
