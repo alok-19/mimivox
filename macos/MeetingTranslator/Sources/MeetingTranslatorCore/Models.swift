@@ -959,6 +959,8 @@ public struct MeetingEvent: Codable, Equatable, Identifiable, Sendable {
     public var confidence: CaptionConfidence?
     /// Why a caption has no translation: set to `catch_up` on an ASR event whose EN was skipped.
     public var translationSkipped: String?
+    /// Set on an ASR event whose line finished with no translation, so no translation is still coming.
+    public var translationEmpty: Bool?
     /// For a `CaptionGapEvent`: whether the skipped audio was archived so Review can recover it.
     public var recoverable: Bool?
     /// Carried by a `LatencyHealthEvent` only.
@@ -999,6 +1001,7 @@ public struct MeetingEvent: Codable, Equatable, Identifiable, Sendable {
         mergedIndexes: [Int]? = nil,
         confidence: CaptionConfidence? = nil,
         translationSkipped: String? = nil,
+        translationEmpty: Bool? = nil,
         recoverable: Bool? = nil,
         health: LatencyHealth? = nil,
         tokens: [LearningToken]? = nil,
@@ -1024,6 +1027,7 @@ public struct MeetingEvent: Codable, Equatable, Identifiable, Sendable {
         self.mergedIndexes = mergedIndexes
         self.confidence = confidence
         self.translationSkipped = translationSkipped
+        self.translationEmpty = translationEmpty
         self.recoverable = recoverable
         self.health = health
         self.tokens = tokens
@@ -1049,6 +1053,7 @@ public struct MeetingEvent: Codable, Equatable, Identifiable, Sendable {
         case mergedIndexes = "merged_indexes"
         case confidence
         case translationSkipped = "translation_skipped"
+        case translationEmpty = "translation_empty"
         case recoverable
         case health
         case tokens
@@ -1076,6 +1081,7 @@ public struct MeetingEvent: Codable, Equatable, Identifiable, Sendable {
         mergedIndexes = try container.decodeIfPresent([Int].self, forKey: .mergedIndexes)
         confidence = try? container.decodeIfPresent(CaptionConfidence.self, forKey: .confidence)
         translationSkipped = try? container.decodeIfPresent(String.self, forKey: .translationSkipped)
+        translationEmpty = try? container.decodeIfPresent(Bool.self, forKey: .translationEmpty)
         recoverable = try? container.decodeIfPresent(Bool.self, forKey: .recoverable)
         health = try? container.decodeIfPresent(LatencyHealth.self, forKey: .health)
         tokens = try? container.decodeIfPresent([LearningToken].self, forKey: .tokens)
@@ -1154,6 +1160,11 @@ public struct BilingualTranscriptRow: Equatable, Identifiable, Sendable {
             return "Translation skipped while catching up"
         }
         return nil
+    }
+
+    /// True once the line finished and the translator produced nothing for it.
+    public var hasNoTranslation: Bool {
+        english == nil && japanese?.translationEmpty == true
     }
 
     public var speaker: SpeakerTag? {

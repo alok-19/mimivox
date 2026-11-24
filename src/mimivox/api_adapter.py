@@ -599,6 +599,8 @@ class APISessionState:
                 }
                 if event.get("translation_skipped"):
                     asr_ev["translation_skipped"] = event["translation_skipped"]
+                elif not en:
+                    asr_ev["translation_empty"] = True
                 if asr_latency_s is not None:
                     asr_ev["asr_latency_s"] = asr_latency_s
                 self.emit(asr_ev)

@@ -67,7 +67,9 @@ private struct TranscriptColumn: View {
                         isCurrent: line.row.id == currentID,
                         isPinned: pinned.contains(line.row.index),
                         pendingText: L10n.text(
-                            line.row.id == currentID && stale ? "Skipped a stale caption" : "Translating…"),
+                            line.row.hasNoTranslation
+                                ? "No translation"
+                                : line.row.id == currentID && stale ? "Skipped a stale caption" : "Translating…"),
                         actions: actions
                     )
                     .equatable()
