@@ -4,7 +4,7 @@ No audio or text leaves the Mac once the models are downloaded. This page covers
 MimiVox stores, for how long, and how to lock it offline.
 
 - **Offline lock (opt-in).** Model downloads always work by default. Start the server with
-  `MIMIVOX_OFFLINE=1` to lock it: once the Whisper and translation models are cached, it sets
+  `MIMIVOX_OFFLINE=1` to lock it: once the Whisper, Haas-ja and translation models are cached, it sets
   `HF_HUB_OFFLINE=1` and `TRANSFORMERS_OFFLINE=1` and refuses model downloads. `/api/status`
   reports `privacy.offline_locked`.
 - **Retention.** Setting `retention_policy`: `forever`, `30d`, `7d`, `1d` or `none` (save no

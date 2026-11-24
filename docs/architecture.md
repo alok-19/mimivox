@@ -178,14 +178,14 @@ Silero VAD detects speech boundaries and emits complete utterance chunks for dow
 
 Defaults live in `config.py`. The balanced and quality profiles raise the silence and chunk limits, and live mic sessions tighten silence to 400 ms and padding to 80 ms (`apply_live_vad_overrides`).
 
-### 3.3 ASR (mlx-whisper)
+### 3.3 ASR (Haas-ja and mlx-whisper)
 
-Japanese transcription using a quantized Whisper model running on MLX.
+A Japanese source language runs Haas-ja v1.0 (`basyauma-tech/Haas-ja-v1.0-mlx-8bit`, a Japanese-only FastConformer-TDT in MLX through `haas-ja-local`). Every other source language and dictation run a quantized Whisper model on MLX. `languages.Language.asr_model` names the model for each language, and `asr._do_asr_streaming` picks the engine from the active model id. Haas returns one segment per chunk and no confidence signals, takes no prompt, and does not use the glossary's Whisper prompt bias. The table below describes the Whisper path.
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
 | `model` | `LibraxisAI/whisper-large-v3-turbo-mlx-q8` | Quantized Whisper large-v3-turbo |
-| `language` | `ja` | Force Japanese language detection |
+| `language` | session source language | Force the source language |
 | `no_speech_threshold` | 0.8 | Filter out non-speech segments |
 | `condition_on_previous_text` | `False` | Prevent error propagation across utterances |
 | `verbose` | `True` | Emit per-segment timestamps during inference |

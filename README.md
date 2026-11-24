@@ -88,7 +88,7 @@ uv run mimivox meeting.wav --glossary terms.csv        # with a glossary
 ### How it fits together
 
 ```
-audio ─▶ Silero VAD ─▶ mlx-whisper ─▶ CAT-Translate / Qwen ─▶ captions
+audio ─▶ Silero VAD ─▶ Haas-ja / mlx-whisper ─▶ CAT-Translate / Qwen ─▶ captions
                                                    │
                        FastAPI server(src/mimivox) ┴─▶ macOS app · terminal
 ```
@@ -152,7 +152,8 @@ Run **macOS release** manually from the Actions tab to build and verify the app 
 
 | Component | Model |
 |---|---|
-| Speech recognition | `LibraxisAI/whisper-large-v3-turbo-mlx-q8` |
+| Speech recognition, Japanese source | `basyauma-tech/Haas-ja-v1.0-mlx-8bit` ([notices](THIRD_PARTY_NOTICES.md)) |
+| Speech recognition, other sources and dictation | `LibraxisAI/whisper-large-v3-turbo-mlx-q8` |
 | JA→EN translation | `hotchpotch/CAT-Translate-1.4b-mlx-q4` |
 | Other pairs, notes, Ask (optional download) | Qwen3-4B-Instruct-2507, 4-bit MLX |
 | Voice activity | Silero VAD |

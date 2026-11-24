@@ -13,6 +13,19 @@ https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM
   authors. MimiVox has not modified the model. It is not a MimiVox work.
 - Runs fully on-device with ONNX Runtime (MIT).
 
+## Haas-ja v1.0 speech recognition model
+
+Speech recognition for Japanese-source sessions runs Haas-ja v1.0, downloaded
+unmodified on demand from
+https://huggingface.co/basyauma-tech/Haas-ja-v1.0-mlx-8bit.
+
+- Model weights: Haas-ja-v1.0, Third Intelligence, Inc., Apache-2.0.
+- 8-bit MLX conversion: Basyauma Technologies LLC, Apache-2.0.
+- Inference code: [haas-ja-local](https://github.com/basyauma-tech/haas-ja-local)
+  (pinned commit `c56919f0da98ee0044ba64279d54b495f8bc5eaa`), Apache-2.0,
+  installed as a Python dependency.
+- Runs fully on-device with MLX. It is not a MimiVox work.
+
 ## Silero VAD model
 
 Speech detection runs the Silero VAD model (`src/mimivox/silero/silero_vad.onnx`),

@@ -5,6 +5,7 @@ MimiVox downloads its models from huggingface.co by default. An organization can
 The models MimiVox fetches are:
 
 - `LibraxisAI/whisper-large-v3-turbo-mlx-q8`
+- `basyauma-tech/Haas-ja-v1.0-mlx-8bit`
 - `hotchpotch/CAT-Translate-1.4b-mlx-q4`
 - `mlx-community/Qwen3-4B-Instruct-2507-4bit` (meeting notes, optional)
 - `Wespeaker/wespeaker-voxceleb-resnet34-LM` (speaker labels, optional)
