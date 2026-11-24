@@ -66,6 +66,8 @@ def _manager(*, proc: FakeProc | None = None, **kw):
         free_bytes=kw.pop("free_bytes", lambda: 100 * GB),
         poll_s=0.01,
     )
+    # Two repos keep the byte arithmetic simple; Haas has its own test.
+    mgr.settings_fn = lambda: {"asr_engine": "whisper"}
     mgr.emit = events.append
     return mgr, proc, events, spawned, loads
 
@@ -373,3 +375,13 @@ def test_models_download_route_delegates_to_setup_when_not_ready(monkeypatch):
     monkeypatch.setattr(setup_manager, "download", fake_download)
     r = _client().post("/api/models/download")
     assert r.status_code == 200 and r.json()["setup"]["phase"] == "downloading"
+
+
+def test_haas_is_downloaded_only_while_selected():
+    from mimivox.config import HAAS_MODEL
+
+    mgr, *_ = _manager()
+    mgr.settings_fn = dict
+    assert HAAS_MODEL in mgr.repo_ids()
+    mgr.settings_fn = lambda: {"asr_engine": "whisper"}
+    assert HAAS_MODEL not in mgr.repo_ids()

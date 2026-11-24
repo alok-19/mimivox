@@ -7,9 +7,11 @@ name = "mimivox"
 version = "1.1.2"
 description = "Real-time JA→EN meeting translator on Apple Silicon via MLX"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "mlx-whisper",
+    # Japanese ASR (Haas-ja, Parakeet-TDT). Not on PyPI; pinned to a reviewed commit.
+    "haas-mlx @ git+https://github.com/matsuurajun/haas-mlx@cde96d263f56aad75c1de70282f71a91562092dd",
     "mlx-lm",
     "fastapi",
     "uvicorn",

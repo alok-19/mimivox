@@ -20,6 +20,9 @@ ASR_MODEL_FILE = WHISPER_MODEL
 # faster per-utt and worse full-file; pipeline dominates live lag). Override
 # via settings.asr_model_live for experiments (e.g. whisper-medium-mlx).
 ASR_MODEL_LIVE = ASR_MODEL_FILE
+# Default Japanese ASR: Haas-ja (Parakeet-TDT), run by haas-mlx. Japanese only,
+# so other source languages and dictation keep Whisper.
+HAAS_MODEL = "mrjnzzz/Haas-ja-v1.0-mlx"
 CAT_MODEL_ID = "hotchpotch/CAT-Translate-1.4b-mlx-q4"
 
 # ---------------------------------------------------------------------------

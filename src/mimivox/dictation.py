@@ -1,7 +1,7 @@
 """mimivox.dictation — Turn a short spoken clip into text for the Translate tab.
 
-Uses the Whisper model the captions already use, so dictation needs no extra
-download. The clip is mono float32 at 16 kHz. Whisper detects the language;
+Uses Whisper, which detects the language: the captions' Whisper model, or the
+default one while captions run on Japanese-only Haas. The clip is mono float32 at 16 kHz. Whisper detects the language;
 only Japanese and English are expected, so any other guess is redone with the
 caller's hint.
 """
@@ -28,11 +28,13 @@ class Dictation:
 def _transcribe(audio: np.ndarray, language: str | None) -> tuple[str, str]:
     import mlx_whisper
 
-    from mimivox.asr import get_asr_model
+    from mimivox.asr import get_asr_model, is_haas_model
+    from mimivox.config import WHISPER_MODEL
 
+    model = get_asr_model()
     result = mlx_whisper.transcribe(
         audio,
-        path_or_hf_repo=get_asr_model(),
+        path_or_hf_repo=WHISPER_MODEL if is_haas_model(model) else model,
         language=language,
         task="transcribe",
         temperature=0,

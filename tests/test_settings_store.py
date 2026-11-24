@@ -18,7 +18,7 @@ from mimivox.settings_store import (
     model_path_status,
     partial_en_enabled,
     refresh_glossary_from_settings,
-    resolve_asr_model_live,
+    resolve_asr_model,
     resolve_microphone_device,
     resolve_system_audio_device,
     save_settings,
@@ -48,15 +48,29 @@ def test_default_settings_shape():
     assert s["asr_model_live"] == ""
 
 
-def test_resolve_asr_model_live_default_and_override():
-    from mimivox.config import ASR_MODEL_LIVE
+def test_haas_is_the_default_engine_for_japanese():
+    from mimivox.config import ASR_MODEL_FILE, HAAS_MODEL
+    from mimivox.languages import LanguagePair
 
-    assert resolve_asr_model_live({}) == ASR_MODEL_LIVE
-    assert resolve_asr_model_live({"asr_model_live": ""}) == ASR_MODEL_LIVE
-    assert (
-        resolve_asr_model_live({"asr_model_live": "mlx-community/whisper-tiny-mlx-q4"})
-        == "mlx-community/whisper-tiny-mlx-q4"
-    )
+    ja = LanguagePair("ja", "en")
+    assert default_settings()["asr_engine"] == "haas"
+    assert resolve_asr_model({}, ja, live=True) == HAAS_MODEL
+    assert resolve_asr_model({}, ja, live=False) == HAAS_MODEL
+    # Haas hears Japanese only; other sources fall back to Whisper.
+    assert resolve_asr_model({}, LanguagePair("en", "ja"), live=False) == ASR_MODEL_FILE
+
+
+def test_whisper_engine_uses_live_override_or_default():
+    from mimivox.config import ASR_MODEL_FILE, ASR_MODEL_LIVE
+    from mimivox.languages import LanguagePair
+
+    ja = LanguagePair("ja", "en")
+    whisper = {"asr_engine": "whisper"}
+    assert resolve_asr_model(whisper, ja, live=True) == ASR_MODEL_LIVE
+    assert resolve_asr_model(whisper, ja, live=False) == ASR_MODEL_FILE
+    tiny = {**whisper, "asr_model_live": "mlx-community/whisper-tiny-mlx-q4"}
+    assert resolve_asr_model(tiny, ja, live=True) == "mlx-community/whisper-tiny-mlx-q4"
+    assert resolve_asr_model(tiny, ja, live=False) == ASR_MODEL_FILE
 
 
 def test_partial_en_enabled_flag():

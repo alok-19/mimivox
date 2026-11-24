@@ -180,7 +180,11 @@ Defaults live in `config.py`. The balanced and quality profiles raise the silenc
 
 ### 3.3 ASR (mlx-whisper)
 
-Japanese transcription using a quantized Whisper model running on MLX.
+Japanese sources default to Haas-ja (`mrjnzzz/Haas-ja-v1.0-mlx`, a Parakeet-TDT model run by
+[haas-mlx](https://github.com/matsuurajun/haas-mlx)). It returns one text per chunk, with no
+segments, prompt, or confidence logprobs. The `asr_engine` setting (`haas` or `whisper`, under
+Settings → Models) picks the engine; other source languages and dictation always use Whisper,
+configured as below.
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|

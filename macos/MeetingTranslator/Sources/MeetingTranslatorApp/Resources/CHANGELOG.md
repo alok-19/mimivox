@@ -9,6 +9,11 @@ sections of `- ` bullets, newest release first. Collect upcoming changes under
 version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 (`MeetingTranslatorCoreChecks` fails if the two differ).
 
+## [Unreleased]
+
+### Changed
+- Japanese captions now use the Haas-ja speech model by default, a model trained for Japanese that runs much faster than Whisper. Switch back to Whisper under Settings → Models. Other languages and dictation still use Whisper. Updating downloads the new model (about 1.2 GB).
+
 ## [1.1.2] - 2026-11-24
 
 ### Added

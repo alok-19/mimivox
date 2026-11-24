@@ -297,7 +297,7 @@
 "Term" = "用語";
 "Choose glossary JSON or CSV" = "用語集のJSONまたはCSVを選択してください";
 "Remove all downloaded models?" = "ダウンロードしたモデルをすべて削除しますか？";
-"Frees about 3.7 GB. Captions keep working until you quit. Next time MimiVox opens, Setup downloads the models again." = "約3.7 GBの空き容量ができます。終了するまでは字幕を使えます。次回MimiVoxを起動すると、セットアップでモデルを再ダウンロードします。";
+"Frees about 4.9 GB. Captions keep working until you quit. Next time MimiVox opens, Setup downloads the models again." = "約4.9 GBの空き容量ができます。終了するまでは字幕を使えます。次回MimiVoxを起動すると、セットアップでモデルを再ダウンロードします。";
 "Check the files" = "ファイルを確認";
 "Get newer versions" = "新しいバージョンを取得";
 "Downloaded models" = "ダウンロード済みモデル";
@@ -486,3 +486,11 @@
 "No transcript lines cited." = "引用された文字起こしの行はありません。";
 "Ask the room" = "その場に聞く";
 "Copy the Japanese" = "日本語をコピー";
+
+/* Speech engine */
+"Japanese speech" = "日本語の音声";
+"Haas-ja (recommended)" = "Haas-ja（推奨）";
+"Whisper" = "Whisper";
+"Haas-ja is trained for Japanese and runs much faster. Whisper still handles other languages and dictation. Applies from the next session." = "Haas-jaは日本語向けに学習されたモデルで、はるかに高速です。他の言語と音声入力にはWhisperを使います。次のセッションから適用されます。";
+"Japanese speech (Haas-ja)" = "日本語の音声（Haas-ja）";
+"Download speech model:" = "音声モデルをダウンロード:";

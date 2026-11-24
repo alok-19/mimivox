@@ -12,15 +12,17 @@ from pathlib import Path
 from typing import Any
 
 from mimivox.config import (
+    ASR_MODEL_FILE,
     ASR_MODEL_LIVE,
     CAT_MODEL_ID,
     DATA_DIR,
     GLOSSARY,
+    HAAS_MODEL,
     WHISPER_MODEL,
     apply_latency_quality,
 )
 from mimivox.glossary import build_initial_prompt, entries_to_map, find_profile, parse_glossary_text
-from mimivox.languages import pair_from_settings
+from mimivox.languages import LanguagePair, pair_from_settings
 
 _DEFAULT_REPLAY = str(Path(DATA_DIR) / "fixtures" / "meeting-recording.wav")
 _SETTINGS_PATH = Path(DATA_DIR) / "settings.json"
@@ -50,7 +52,9 @@ def default_settings() -> dict[str, Any]:
         "cloud_provider_consent": False,
         "replay_audio_path": _DEFAULT_REPLAY,
         "replay_duration_seconds": 20,
-        # Empty -> default ASR_MODEL_LIVE (turbo-q8). Set to a model id
+        # "haas" (Japanese source only; other languages fall back) or "whisper".
+        "asr_engine": "haas",
+        # Whisper only. Empty -> default ASR_MODEL_LIVE (turbo-q8). Set to a model id
         # (e.g. "mlx-community/whisper-medium-mlx") to override the live path.
         "asr_model_live": "",
         # Stream a partial EN preview during ASR so EN appears before the final.
@@ -216,8 +220,23 @@ def apply_settings_for_session(
     set_asr_language(pair_from_settings(settings).whisper_language)
 
 
-def resolve_asr_model_live(settings: dict[str, Any]) -> str:
-    """Model id for the live ASR path. Empty/invalid -> ASR_MODEL_LIVE default."""
+ASR_ENGINES = ("haas", "whisper")
+
+
+def asr_engine(settings: dict[str, Any]) -> str:
+    raw = settings.get("asr_engine")
+    return raw if raw in ASR_ENGINES else "haas"
+
+
+def resolve_asr_model(settings: dict[str, Any], pair: LanguagePair, *, live: bool) -> str:
+    """Model id for a session: Haas for Japanese unless Whisper is chosen.
+
+    Whisper sessions use asr_model_live (live only) or the default model.
+    """
+    if asr_engine(settings) == "haas" and pair.source == "ja":
+        return HAAS_MODEL
+    if not live:
+        return ASR_MODEL_FILE
     raw = settings.get("asr_model_live")
     if not isinstance(raw, str) or not raw.strip():
         return ASR_MODEL_LIVE

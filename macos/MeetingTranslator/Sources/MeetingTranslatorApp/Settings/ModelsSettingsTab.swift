@@ -12,6 +12,7 @@ struct ModelsSettingsTab: View {
     var body: some View {
         Form {
             setup
+            engine
             models
             if !nextSteps.isEmpty { steps }
             maintenance
@@ -24,7 +25,7 @@ struct ModelsSettingsTab: View {
         } message: {
             Text(
                 L10n.text(
-                    "Frees about 3.7 GB. Captions keep working until you quit. Next time MimiVox opens, Setup downloads the models again."
+                    "Frees about 4.9 GB. Captions keep working until you quit. Next time MimiVox opens, Setup downloads the models again."
                 ))
         }
     }
@@ -47,6 +48,26 @@ struct ModelsSettingsTab: View {
             }
         } header: {
             Text(L10n.text("Setup"))
+        }
+    }
+
+    // MARK: Speech engine
+
+    private var engine: some View {
+        Section {
+            Picker(L10n.text("Japanese speech"), selection: $store.settings.asrEngine) {
+                ForEach(SpeechEngine.allCases) { engine in
+                    Text(L10n.text(engine.title)).tag(engine.rawValue)
+                }
+            }
+        } header: {
+            Text(L10n.text("Speech recognition"))
+        } footer: {
+            SettingsFooter(
+                L10n.text(
+                    "Haas-ja is trained for Japanese and runs much faster. Whisper still handles other languages and dictation. Applies from the next session."
+                )
+            )
         }
     }
 
@@ -73,7 +94,7 @@ struct ModelsSettingsTab: View {
         if step == "loading_models" {
             return L10n.text("Downloading models…")
         }
-        for prefix in ["Download whisper model:", "Download CAT model:"] where step.hasPrefix(prefix) {
+        for prefix in ["Download whisper model:", "Download speech model:", "Download CAT model:"] where step.hasPrefix(prefix) {
             return L10n.text(prefix) + step.dropFirst(prefix.count)
         }
         return L10n.text(step)
@@ -124,12 +145,13 @@ struct ModelsSettingsTab: View {
 }
 
 private enum ModelKind: CaseIterable, Identifiable {
-    case whisper, catTranslate, notesLlm
+    case haas, whisper, catTranslate, notesLlm
 
     var id: Self { self }
 
     var title: String {
         switch self {
+        case .haas: L10n.text("Japanese speech (Haas-ja)")
         case .whisper: L10n.text("Speech recognition")
         case .catTranslate: L10n.text("Translation")
         case .notesLlm: L10n.text("Meeting notes")
@@ -140,6 +162,7 @@ private enum ModelKind: CaseIterable, Identifiable {
     func readiness(in store: TranslatorStore) -> ModelReadinessItem? {
         let readiness = store.status?.modelReadiness
         return switch self {
+        case .haas: readiness?.haas
         case .whisper: readiness?.whisper
         case .catTranslate: readiness?.catTranslate
         case .notesLlm: readiness?.notesLlm

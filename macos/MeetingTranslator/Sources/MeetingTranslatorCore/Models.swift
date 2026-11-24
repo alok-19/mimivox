@@ -192,6 +192,8 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
     public var modelPaths: ModelPaths
     /// Furigana, word glosses and a vocabulary list for Japanese learners.
     public var learningMode: Bool
+    /// `haas` (Japanese source only) or `whisper`; see `SpeechEngine`.
+    public var asrEngine: String
 
     public var languagePair: LanguagePair {
         get { .resolve(source: sourceLang, target: targetLang) }
@@ -219,7 +221,8 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
         replayAudioPath: String = "data/fixtures/meeting-recording.wav",
         replayDurationSeconds: Double = 20,
         modelPaths: ModelPaths = ModelPaths(),
-        learningMode: Bool = false
+        learningMode: Bool = false,
+        asrEngine: String = SpeechEngine.haas.rawValue
     ) {
         self.sourceLang = sourceLang
         self.targetLang = targetLang
@@ -239,6 +242,7 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
         self.replayDurationSeconds = replayDurationSeconds
         self.modelPaths = modelPaths
         self.learningMode = learningMode
+        self.asrEngine = asrEngine
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -260,6 +264,7 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
         case replayDurationSeconds = "replay_duration_seconds"
         case modelPaths = "model_paths"
         case learningMode = "learning_mode"
+        case asrEngine = "asr_engine"
     }
 
     public init(from decoder: Decoder) throws {
@@ -284,6 +289,7 @@ public struct MeetingSettings: Codable, Equatable, Sendable {
         replayDurationSeconds = try container.decodeIfPresent(Double.self, forKey: .replayDurationSeconds) ?? 20
         modelPaths = try container.decodeIfPresent(ModelPaths.self, forKey: .modelPaths) ?? ModelPaths()
         learningMode = try container.decodeIfPresent(Bool.self, forKey: .learningMode) ?? false
+        asrEngine = try container.decodeIfPresent(String.self, forKey: .asrEngine) ?? SpeechEngine.haas.rawValue
     }
 }
 
@@ -363,10 +369,27 @@ public struct ModelPaths: Codable, Equatable, Sendable {
     }
 }
 
+/// Which model turns Japanese speech into text. Other source languages always use Whisper.
+public enum SpeechEngine: String, CaseIterable, Identifiable, Sendable {
+    case haas
+    case whisper
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .haas: "Haas-ja (recommended)"
+        case .whisper: "Whisper"
+        }
+    }
+}
+
 public struct ModelReadiness: Codable, Equatable, Sendable {
     public var ready: Bool
     public var nextSteps: [String]
     public var whisper: ModelReadinessItem?
+    /// Haas-ja, the default Japanese speech model. Nil from older servers.
+    public var haas: ModelReadinessItem?
     public var catTranslate: ModelReadinessItem?
     public var glossary: ModelReadinessItem?
     /// Optional on-device LLM for meeting notes / Ask; never part of `ready`.
@@ -376,6 +399,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
         ready: Bool = false,
         nextSteps: [String] = [],
         whisper: ModelReadinessItem? = nil,
+        haas: ModelReadinessItem? = nil,
         catTranslate: ModelReadinessItem? = nil,
         glossary: ModelReadinessItem? = nil,
         notesLlm: ModelReadinessItem? = nil
@@ -383,6 +407,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
         self.ready = ready
         self.nextSteps = nextSteps
         self.whisper = whisper
+        self.haas = haas
         self.catTranslate = catTranslate
         self.glossary = glossary
         self.notesLlm = notesLlm
@@ -392,6 +417,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
         case ready
         case nextSteps = "next_steps"
         case whisper
+        case haas
         case catTranslate = "cat_translate"
         case glossary
         case notesLlm = "notes_llm"

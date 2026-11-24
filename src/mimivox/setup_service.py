@@ -30,8 +30,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from mimivox.config import CAT_MODEL_ID, WHISPER_MODEL
-from mimivox.models_service import hub_repo_sizes
+from mimivox.config import CAT_MODEL_ID, HAAS_MODEL, WHISPER_MODEL
+from mimivox.models_service import hub_repo_sizes, needs_haas
 
 FailureReason = Literal["offline", "disk_full", "error"]
 
@@ -39,6 +39,7 @@ FailureReason = Literal["offline", "disk_full", "error"]
 PINNED_MODEL_BYTES: dict[str, int] = {
     "LibraxisAI/whisper-large-v3-turbo-mlx-q8": 916_174_573,
     "hotchpotch/CAT-Translate-1.4b-mlx-q4": 798_693_535,
+    "mrjnzzz/Haas-ja-v1.0-mlx": 1_232_106_303,
 }
 _UNKNOWN_MODEL_BYTES = 1_000_000_000
 _DISK_MARGIN = 1.05
@@ -225,12 +226,15 @@ class SetupManager:
         """Hub repos the configured models need; local paths need no download."""
         from mimivox.models_service import _is_local_path
 
-        paths = self.settings_fn().get("model_paths")
+        settings = self.settings_fn()
+        paths = settings.get("model_paths")
         paths = paths if isinstance(paths, dict) else {}
-        ids = (
+        ids = [
             str(paths.get("whisper") or WHISPER_MODEL),
             str(paths.get("cat_translate") or CAT_MODEL_ID),
-        )
+        ]
+        if needs_haas(settings):
+            ids.append(HAAS_MODEL)
         return [i for i in ids if not _is_local_path(i)]
 
     def _missing(self) -> list[str]:

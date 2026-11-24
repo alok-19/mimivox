@@ -1,4 +1,4 @@
-"""mimivox.asr — Whisper ASR loading and streaming transcription."""
+"""mimivox.asr — ASR loading and streaming transcription (Haas-ja or Whisper)."""
 
 from __future__ import annotations
 
@@ -8,12 +8,13 @@ import sys as _sys
 import threading as _threading
 import time
 from collections.abc import Callable
+from typing import Any
 
 import mlx_whisper
 from mlx_whisper import load_models
 
 from mimivox.confidence import AsrSignals, asr_signals_from_segments
-from mimivox.config import _SEG_RE, SAMPLE_RATE, WHISPER_MODEL
+from mimivox.config import _SEG_RE, HAAS_MODEL, SAMPLE_RATE, WHISPER_MODEL
 
 # ---------------------------------------------------------------------------
 # Active ASR model (swappable per session)
@@ -60,11 +61,48 @@ def get_asr_prompt() -> str:
     return _asr_prompt
 
 
+def is_haas_model(model_id: str) -> bool:
+    return model_id == HAAS_MODEL
+
+
 def preload_asr_model(model_id: str) -> None:
-    """Eagerly load a model into the mlx_whisper cache (call off the loop)."""
+    """Eagerly load a model so the first chunk does not stall (call off the loop)."""
+    if is_haas_model(model_id):
+        _load_haas(model_id)
+        return
     from mlx_whisper import load_models
 
     load_models.load_model(model_id or WHISPER_MODEL)
+
+
+# ---------------------------------------------------------------------------
+# Haas-ja (Parakeet-TDT, Japanese only)
+# ---------------------------------------------------------------------------
+_haas_lock = _threading.Lock()
+_haas: tuple[str, Any, Any] | None = None  # (model_id, HaasModel, SentencePieceProcessor)
+
+
+def _load_haas(model_id: str) -> tuple[Any, Any]:
+    global _haas
+    with _haas_lock:
+        if _haas is None or _haas[0] != model_id:
+            import sentencepiece as spm
+            from haas_mlx import HaasModel
+
+            from mimivox.models_service import model_dir
+
+            path = model_dir(model_id)
+            sp = spm.SentencePieceProcessor(model_file=str(path / "tokenizer.model"))
+            _haas = (model_id, HaasModel.load(path), sp)
+        return _haas[1], _haas[2]
+
+
+def _haas_transcribe(audio: np.ndarray) -> str:
+    import mlx.core as mx
+    from haas_mlx.longform import transcribe_text
+
+    model, sp = _load_haas(get_asr_model())
+    return transcribe_text(model, mx.array(audio.astype(np.float32, copy=False)), sp).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +162,15 @@ def _do_asr_streaming(
             last = int(np.flatnonzero(above)[-1])
             pad = min(SAMPLE_RATE // 50, audio.size - last - 1)  # ~20ms breath
             audio = audio[: min(audio.size, last + pad + 1)]
+
+    if is_haas_model(get_asr_model()):
+        # No segments, logprobs or prompt: one final text per chunk; the
+        # glossary still applies to the text downstream.
+        t0 = time.perf_counter()
+        text = _haas_transcribe(audio)
+        if text:
+            on_segment(text)
+        return text, time.perf_counter() - t0, None
 
     _routing_stdout._local.capture = _handle
     t0 = time.perf_counter()

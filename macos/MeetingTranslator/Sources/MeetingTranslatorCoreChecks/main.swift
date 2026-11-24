@@ -1625,6 +1625,8 @@ func checkLatencyHealth() async throws {
     let encoded = try JSONEncoder().encode(MeetingSettings(catchUpMode: "off"))
     let object = try unwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any], "settings json")
     try expect(object["catch_up_mode"] as? String == "off", "catch_up_mode encodes")
+    try expect(object["asr_engine"] as? String == "haas", "asr_engine defaults to haas")
+    try expect(old.settings.asrEngine == "haas", "missing asr_engine decodes as haas")
 
     let events = try JSONDecoder().decode(
         [MeetingEvent].self,

@@ -92,3 +92,24 @@ def test_dictation_body_limit_is_checked_before_decoding(client, monkeypatch):
 def test_refused_while_a_meeting_is_captioned(client, monkeypatch):
     monkeypatch.setattr(type(api_state), "is_running", property(lambda self: True))
     assert client.post("/api/dictate", content=_clip()).status_code == 409
+
+
+def test_dictation_uses_whisper_while_captions_use_haas(monkeypatch):
+    import mlx_whisper
+
+    from mimivox import asr
+    from mimivox.config import HAAS_MODEL, WHISPER_MODEL
+
+    seen = {}
+
+    def fake(audio, **kw):
+        seen.update(kw)
+        return {"text": "hello", "language": "en"}
+
+    monkeypatch.setattr(mlx_whisper, "transcribe", fake)
+    asr.set_asr_model(HAAS_MODEL)
+    try:
+        dictation._transcribe(np.zeros(16000, dtype=np.float32), None)
+    finally:
+        asr.set_asr_model(WHISPER_MODEL)
+    assert seen["path_or_hf_repo"] == WHISPER_MODEL

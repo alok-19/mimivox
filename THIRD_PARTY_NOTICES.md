@@ -1,5 +1,14 @@
 # Third-party notices
 
+## Haas-ja v1.0 speech model (MLX)
+
+Japanese speech recognition uses `mrjnzzz/Haas-ja-v1.0-mlx`, an unofficial MLX
+conversion of [third-intelligence/Haas-ja-v1.0](https://huggingface.co/third-intelligence/Haas-ja-v1.0),
+downloaded unmodified on demand from https://huggingface.co/mrjnzzz/Haas-ja-v1.0-mlx.
+Apache-2.0; its `LICENSE` and `NOTICE` download with the weights. It runs with
+[haas-mlx](https://github.com/matsuurajun/haas-mlx) (Apache-2.0, pinned commit
+`cde96d26`). MimiVox has not modified either. Runs fully on-device with MLX.
+
 ## WeSpeaker ResNet34-LM speaker embedding model
 
 MimiVox's optional speaker labels use the WeSpeaker ResNet34-LM model

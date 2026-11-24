@@ -13,7 +13,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mimivox.config import CAT_MODEL_ID, DATA_DIR, NOTES_MODEL_ID, WHISPER_MODEL, _models
+from mimivox.config import (
+    CAT_MODEL_ID,
+    DATA_DIR,
+    HAAS_MODEL,
+    NOTES_MODEL_ID,
+    WHISPER_MODEL,
+    _models,
+)
 from mimivox.diarization import (
     SPEAKER_MODEL_FILE,
     SPEAKER_MODEL_REPO,
@@ -121,8 +128,15 @@ def _loaded_in_process() -> dict[str, bool]:
     }
 
 
+def needs_haas(settings: dict[str, Any]) -> bool:
+    """Whether the chosen speech engine is Haas-ja (the default)."""
+    from mimivox.settings_store import asr_engine
+
+    return asr_engine(settings) == "haas"
+
+
 def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Check HF cache / local path for whisper + CAT; return readiness detail."""
+    """Check HF cache / local path for whisper + CAT (+ Haas); return readiness detail."""
     settings = settings or {}
     paths = settings.get("model_paths") if isinstance(settings.get("model_paths"), dict) else {}
     whisper_id = str((paths or {}).get("whisper") or WHISPER_MODEL)
@@ -140,6 +154,10 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         next_steps.append(f"Download whisper model: {whisper_id}")
     if not c_ready:
         next_steps.append(f"Download CAT model: {cat_id}")
+    use_haas = needs_haas(settings)
+    h_ready, h_msg, h_path = model_present(HAAS_MODEL)
+    if use_haas and not h_ready:
+        next_steps.append(f"Download speech model: {HAAS_MODEL}")
     if not whisper_matches or not cat_matches:
         next_steps.append("Restart server to apply model path changes")
 
@@ -153,7 +171,7 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         if "Not found" in c_msg:
             c_msg = "Loaded in process at startup"
 
-    ready = w_ready and c_ready
+    ready = w_ready and c_ready and (h_ready or not use_haas)
     n_ready, n_msg, n_path = model_present(NOTES_MODEL_ID)
     from mimivox import notes_llm
 
@@ -171,6 +189,14 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
             "loaded_path": WHISPER_MODEL,
             "matches_loaded": whisper_matches,
             "loaded_in_process": loaded["whisper"] and whisper_matches,
+        },
+        "haas": {
+            "ready": h_ready,
+            "message": h_msg if h_ready or use_haas else "Not downloaded (Whisper is selected)",
+            "model_id": HAAS_MODEL,
+            "display_name": "Haas-ja v1.0 (MLX, Japanese)",
+            "path": h_path or HAAS_MODEL,
+            "in_use": use_haas,
         },
         "cat_translate": {
             "ready": c_ready,
@@ -217,6 +243,18 @@ def _snapshot_download(model_id: str, *, force: bool = False) -> str:
         repo_id=model_id,
         force_download=force,
     )
+
+
+def model_dir(model_id: str) -> Path:
+    """Local folder of a model: a local path, the HF cache, or a fresh download."""
+    if _is_local_path(model_id):
+        return Path(model_id)
+    from huggingface_hub import snapshot_download
+
+    try:
+        return Path(snapshot_download(repo_id=model_id, local_files_only=True))
+    except Exception:
+        return Path(_snapshot_download(model_id))
 
 
 def hub_repo_sizes(repo_ids: list[str]) -> dict[str, int]:
@@ -268,7 +306,10 @@ def download_models(
         results["ok"] = not results["errors"]
         return results
 
-    for key, model_id in (("whisper", whisper_id), ("cat_translate", cat_id)):
+    models = [("whisper", whisper_id), ("cat_translate", cat_id)]
+    if needs_haas(settings):
+        models.append(("haas", HAAS_MODEL))
+    for key, model_id in models:
         if _is_local_path(model_id):
             results[key] = {"path": str(Path(model_id).resolve()), "skipped": True}
             if on_progress:
@@ -400,7 +441,7 @@ def reset_cache(
     return {"ok": True, "message": message, "path": str(resolved)}
 
 
-MIMIVOX_REPOS = (WHISPER_MODEL, CAT_MODEL_ID, NOTES_MODEL_ID)
+MIMIVOX_REPOS = (WHISPER_MODEL, HAAS_MODEL, CAT_MODEL_ID, NOTES_MODEL_ID)
 
 
 def _hf_repo_dir(repo_id: str) -> Path:

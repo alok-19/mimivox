@@ -150,7 +150,8 @@ def test_download_models_calls_snapshot(tmp_path: Path):
                 "model_paths": {
                     "whisper": str(local),
                     "cat_translate": "org/cat-model",
-                }
+                },
+                "asr_engine": "whisper",
             }
         )
     assert result["ok"] is True, result
