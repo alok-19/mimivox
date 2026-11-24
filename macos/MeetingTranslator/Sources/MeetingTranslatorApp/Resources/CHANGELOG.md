@@ -9,6 +9,13 @@ sections of `- ` bullets, newest release first. Collect upcoming changes under
 version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 (`MeetingTranslatorCoreChecks` fails if the two differ).
 
+## [1.1.3] - 2026-11-24
+
+### Fixed
+- Replay converts recordings in a private temporary folder and removes it when conversion finishes or fails.
+- Meeting archive and model cache operations check their file paths before changing stored data.
+- The local helper gives clear error messages without exposing internal exception details.
+
 ## [1.1.2] - 2026-11-24
 
 ### Added
