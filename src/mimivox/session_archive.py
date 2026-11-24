@@ -76,7 +76,7 @@ def _direct_child(directory: Path, name: str) -> Path:
             resolved = os.path.realpath(path, strict=True)
         except FileNotFoundError:
             resolved = os.path.realpath(path)
-        if resolved != str(directory.resolve() / name):
+        if resolved != os.path.join(os.path.realpath(directory), name):
             raise ValueError("session path must stay inside the sessions directory")
     except (OSError, RuntimeError) as exc:
         raise ValueError("session path must stay inside the sessions directory") from exc
