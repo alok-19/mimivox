@@ -9,6 +9,16 @@ sections of `- ` bullets, newest release first. Collect upcoming changes under
 version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 (`MeetingTranslatorCoreChecks` fails if the two differ).
 
+## [1.2.1] - 2026-11-24
+
+### Added
+- During a session, the Live header names the speech and translation models in use, for example "System audio · Haas-ja → CAT-Translate".
+
+### Fixed
+- A short line such as 「私は」 no longer ends up with an empty translation.
+- A finished line with no translation says "No translation" instead of staying on "Translating…".
+- Clock times such as "12:00" for 「12時」 are no longer flagged as numbers that may not match the Japanese.
+
 ## [1.2.0] - 2026-11-24
 
 ### Changed
