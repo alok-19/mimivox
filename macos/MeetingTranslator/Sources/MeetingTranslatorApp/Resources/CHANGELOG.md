@@ -9,6 +9,14 @@ sections of `- ` bullets, newest release first. Collect upcoming changes under
 version as `CFBundleShortVersionString` in `BundleResources/Info.plist`
 (`MeetingTranslatorCoreChecks` fails if the two differ).
 
+## [1.2.0] - 2026-11-24
+
+### Changed
+- Japanese speech is now recognized with Haas-ja v1.0, which is more accurate and faster than Whisper on Japanese. English, Chinese and Korean speech, and dictation, still use Whisper.
+- Settings → Models lists the Japanese speech model. MimiVox downloads it once (about 0.73 GB).
+- Glossary terms no longer steer Japanese speech recognition. They still apply to translation.
+- Japanese captions no longer show a speech-recognition confidence level. Translation confidence is unchanged.
+
 ## [1.1.3] - 2026-11-24
 
 ### Fixed
