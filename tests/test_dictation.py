@@ -38,6 +38,25 @@ def test_dictate_returns_text_and_detected_language(client, monkeypatch):
     assert calls == [None]
 
 
+def test_dictation_always_uses_whisper(monkeypatch):
+    from mimivox import asr
+    from mimivox.config import HAAS_JA_MODEL, WHISPER_MODEL
+
+    seen = []
+
+    def fake_whisper(audio, **kwargs):
+        seen.append(kwargs["path_or_hf_repo"])
+        return {"text": "ok", "language": "ja"}
+
+    monkeypatch.setattr("mlx_whisper.transcribe", fake_whisper)
+    asr.set_asr_model(HAAS_JA_MODEL)
+    try:
+        assert dictation._transcribe(np.zeros(1600, dtype=np.float32), None) == ("ok", "ja")
+    finally:
+        asr.set_asr_model(WHISPER_MODEL)
+    assert seen == [WHISPER_MODEL]
+
+
 def test_unexpected_language_is_redone_with_the_hint(client, monkeypatch):
     replies = iter([("Ni hao", "zh"), ("こんにちは", "ja")])
     calls = []

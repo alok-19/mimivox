@@ -23,9 +23,9 @@ def test_latency_presets_include_fast_balanced_quality():
         assert key in config.LATENCY_PRESETS["fast"]
 
 
-def test_live_asr_defaults_to_file_turbo_q8():
-    assert config.ASR_MODEL_LIVE == config.ASR_MODEL_FILE == config.WHISPER_MODEL
-    assert "turbo" in config.ASR_MODEL_LIVE.lower() or "large-v3" in config.ASR_MODEL_LIVE
+def test_default_models_per_engine():
+    assert "turbo" in config.WHISPER_MODEL.lower() or "large-v3" in config.WHISPER_MODEL
+    assert "Haas-ja" in config.HAAS_JA_MODEL
 
 
 def test_asr_queue_policy_constants():

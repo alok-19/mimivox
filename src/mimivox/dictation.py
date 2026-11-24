@@ -28,11 +28,11 @@ class Dictation:
 def _transcribe(audio: np.ndarray, language: str | None) -> tuple[str, str]:
     import mlx_whisper
 
-    from mimivox.asr import get_asr_model
+    from mimivox.config import WHISPER_MODEL
 
     result = mlx_whisper.transcribe(
         audio,
-        path_or_hf_repo=get_asr_model(),
+        path_or_hf_repo=WHISPER_MODEL,
         language=language,
         task="transcribe",
         temperature=0,

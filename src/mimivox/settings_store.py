@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from mimivox.config import (
-    ASR_MODEL_LIVE,
     CAT_MODEL_ID,
     DATA_DIR,
     GLOSSARY,
@@ -50,7 +49,7 @@ def default_settings() -> dict[str, Any]:
         "cloud_provider_consent": False,
         "replay_audio_path": _DEFAULT_REPLAY,
         "replay_duration_seconds": 20,
-        # Empty -> default ASR_MODEL_LIVE (turbo-q8). Set to a model id
+        # Empty -> the source language's model (pair.src.asr_model). Set to a model id
         # (e.g. "mlx-community/whisper-medium-mlx") to override the live path.
         "asr_model_live": "",
         # Stream a partial EN preview during ASR so EN appears before the final.
@@ -216,11 +215,11 @@ def apply_settings_for_session(
     set_asr_language(pair_from_settings(settings).whisper_language)
 
 
-def resolve_asr_model_live(settings: dict[str, Any]) -> str:
-    """Model id for the live ASR path. Empty/invalid -> ASR_MODEL_LIVE default."""
+def resolve_asr_model_live(settings: dict[str, Any]) -> str | None:
+    """Explicit live ASR model id, or None to use the source language's model."""
     raw = settings.get("asr_model_live")
     if not isinstance(raw, str) or not raw.strip():
-        return ASR_MODEL_LIVE
+        return None
     return raw.strip()
 
 

@@ -18,6 +18,8 @@ import dataclasses
 from collections.abc import Mapping
 from typing import Any
 
+from mimivox.config import HAAS_JA_MODEL, WHISPER_MODEL
+
 
 @dataclasses.dataclass(frozen=True)
 class Language:
@@ -28,13 +30,14 @@ class Language:
     asr_prompt_base: str  # neutral Whisper initial_prompt before glossary terms
     prompt_sep: str  # joins glossary terms inside the Whisper prompt
     prompt_end: str
+    asr_model: str  # the one recognizer that hears this language by default
 
 
 LANGUAGES: dict[str, Language] = {
-    "ja": Language("ja", "Japanese", "日本語", "。", "。、", "、", "。"),
-    "zh": Language("zh", "Chinese", "中文", "。", "", "，", "。"),
-    "ko": Language("ko", "Korean", "한국어", ".", "", ", ", "."),
-    "en": Language("en", "English", "English", ".", "", ", ", "."),
+    "ja": Language("ja", "Japanese", "日本語", "。", "。、", "、", "。", HAAS_JA_MODEL),
+    "zh": Language("zh", "Chinese", "中文", "。", "", "，", "。", WHISPER_MODEL),
+    "ko": Language("ko", "Korean", "한국어", ".", "", ", ", ".", WHISPER_MODEL),
+    "en": Language("en", "English", "English", ".", "", ", ", ".", WHISPER_MODEL),
 }
 
 _SUPPORTED: tuple[tuple[str, str], ...] = (("ja", "en"), ("zh", "en"), ("ko", "en"), ("en", "ja"))
