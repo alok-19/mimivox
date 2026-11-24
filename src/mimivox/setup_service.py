@@ -30,7 +30,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from mimivox.config import CAT_MODEL_ID, WHISPER_MODEL
+from mimivox.config import CAT_MODEL_ID, HAAS_JA_MODEL, WHISPER_MODEL
 from mimivox.models_service import hub_repo_sizes
 
 FailureReason = Literal["offline", "disk_full", "error"]
@@ -229,6 +229,7 @@ class SetupManager:
         paths = paths if isinstance(paths, dict) else {}
         ids = (
             str(paths.get("whisper") or WHISPER_MODEL),
+            HAAS_JA_MODEL,
             str(paths.get("cat_translate") or CAT_MODEL_ID),
         )
         return [i for i in ids if not _is_local_path(i)]

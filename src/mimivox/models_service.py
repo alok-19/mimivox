@@ -14,7 +14,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from mimivox.config import CAT_MODEL_ID, DATA_DIR, NOTES_MODEL_ID, WHISPER_MODEL, _models
+from mimivox.config import (
+    CAT_MODEL_ID,
+    DATA_DIR,
+    HAAS_JA_MODEL,
+    NOTES_MODEL_ID,
+    WHISPER_MODEL,
+    _models,
+)
 from mimivox.diarization import (
     SPEAKER_MODEL_FILE,
     SPEAKER_MODEL_REPO,
@@ -123,7 +130,7 @@ def _loaded_in_process() -> dict[str, bool]:
 
 
 def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Check HF cache / local path for whisper + CAT; return readiness detail."""
+    """Check HF cache / local path for whisper, Haas-ja and CAT; return readiness detail."""
     settings = settings or {}
     paths = settings.get("model_paths") if isinstance(settings.get("model_paths"), dict) else {}
     whisper_id = str((paths or {}).get("whisper") or WHISPER_MODEL)
@@ -131,6 +138,7 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
 
     w_ready, w_msg, w_path = model_present(whisper_id)
     c_ready, c_msg, c_path = model_present(cat_id)
+    j_ready, j_msg, j_path = model_present(HAAS_JA_MODEL)
     loaded = _loaded_in_process()
 
     # If settings path differs from the process-loaded IDs, note restart need.
@@ -139,6 +147,8 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
     next_steps: list[str] = []
     if not w_ready:
         next_steps.append(f"Download whisper model: {whisper_id}")
+    if not j_ready:
+        next_steps.append(f"Download Japanese speech model: {HAAS_JA_MODEL}")
     if not c_ready:
         next_steps.append(f"Download CAT model: {cat_id}")
     if not whisper_matches or not cat_matches:
@@ -154,7 +164,7 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
         if "Not found" in c_msg:
             c_msg = "Loaded in process at startup"
 
-    ready = w_ready and c_ready
+    ready = w_ready and j_ready and c_ready
     n_ready, n_msg, n_path = model_present(NOTES_MODEL_ID)
     from mimivox import notes_llm
 
@@ -172,6 +182,13 @@ def verify(settings: dict[str, Any] | None = None) -> dict[str, Any]:
             "loaded_path": WHISPER_MODEL,
             "matches_loaded": whisper_matches,
             "loaded_in_process": loaded["whisper"] and whisper_matches,
+        },
+        "asr_ja": {
+            "ready": j_ready,
+            "message": j_msg,
+            "model_id": HAAS_JA_MODEL,
+            "display_name": "Haas-ja v1.0 (MLX 8-bit, Japanese speech)",
+            "path": j_path or HAAS_JA_MODEL,
         },
         "cat_translate": {
             "ready": c_ready,
@@ -220,6 +237,11 @@ def _snapshot_download(model_id: str, *, force: bool = False) -> str:
     )
 
 
+def fetch_model_dir(model_id: str) -> str:
+    """Local directory of a Hub model, downloading it first when absent."""
+    return _snapshot_download(model_id)
+
+
 def hub_repo_sizes(repo_ids: list[str]) -> dict[str, int]:
     """Total file bytes per repo from the Hub. Raises when the Hub is unreachable."""
     from huggingface_hub import HfApi
@@ -256,7 +278,7 @@ def download_models(
     whisper_id = str((paths or {}).get("whisper") or WHISPER_MODEL)
     cat_id = str((paths or {}).get("cat_translate") or CAT_MODEL_ID)
 
-    results: dict[str, Any] = {"whisper": None, "cat_translate": None, "errors": []}
+    results: dict[str, Any] = {"whisper": None, "asr_ja": None, "cat_translate": None, "errors": []}
 
     if only == "notes_llm":
         try:
@@ -270,7 +292,11 @@ def download_models(
         results["ok"] = not results["errors"]
         return results
 
-    for key, model_id in (("whisper", whisper_id), ("cat_translate", cat_id)):
+    for key, model_id in (
+        ("whisper", whisper_id),
+        ("asr_ja", HAAS_JA_MODEL),
+        ("cat_translate", cat_id),
+    ):
         if _is_local_path(model_id):
             results[key] = {"path": str(Path(model_id).resolve()), "skipped": True}
             if on_progress:
@@ -413,7 +439,7 @@ def reset_cache(
     return {"ok": True, "message": message, "path": str(resolved)}
 
 
-MIMIVOX_REPOS = (WHISPER_MODEL, CAT_MODEL_ID, NOTES_MODEL_ID)
+MIMIVOX_REPOS = (WHISPER_MODEL, HAAS_JA_MODEL, CAT_MODEL_ID, NOTES_MODEL_ID)
 
 
 def _hf_repo_dir(repo_id: str) -> Path:
