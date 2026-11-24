@@ -13,13 +13,10 @@ from typing import Any, Literal
 # ---------------------------------------------------------------------------
 # Model IDs
 # ---------------------------------------------------------------------------
-# File/replay path: accuracy-first large-v3-turbo (quantized).
+# Default recognizer for every source language except Japanese, and for dictation.
 WHISPER_MODEL = "LibraxisAI/whisper-large-v3-turbo-mlx-q8"
-ASR_MODEL_FILE = WHISPER_MODEL
-# Live path defaults to the same turbo-q8 model (bench: medium is only ~1.2×
-# faster per-utt and worse full-file; pipeline dominates live lag). Override
-# via settings.asr_model_live for experiments (e.g. whisper-medium-mlx).
-ASR_MODEL_LIVE = ASR_MODEL_FILE
+# Default recognizer for Japanese source sessions (Japanese-only FastConformer-TDT).
+HAAS_JA_MODEL = "basyauma-tech/Haas-ja-v1.0-mlx-8bit"
 CAT_MODEL_ID = "hotchpotch/CAT-Translate-1.4b-mlx-q4"
 
 # ---------------------------------------------------------------------------

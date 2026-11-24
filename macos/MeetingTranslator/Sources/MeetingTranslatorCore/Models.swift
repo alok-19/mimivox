@@ -367,6 +367,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
     public var ready: Bool
     public var nextSteps: [String]
     public var whisper: ModelReadinessItem?
+    public var asrJa: ModelReadinessItem?
     public var catTranslate: ModelReadinessItem?
     public var glossary: ModelReadinessItem?
     /// Optional on-device LLM for meeting notes / Ask; never part of `ready`.
@@ -376,6 +377,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
         ready: Bool = false,
         nextSteps: [String] = [],
         whisper: ModelReadinessItem? = nil,
+        asrJa: ModelReadinessItem? = nil,
         catTranslate: ModelReadinessItem? = nil,
         glossary: ModelReadinessItem? = nil,
         notesLlm: ModelReadinessItem? = nil
@@ -383,6 +385,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
         self.ready = ready
         self.nextSteps = nextSteps
         self.whisper = whisper
+        self.asrJa = asrJa
         self.catTranslate = catTranslate
         self.glossary = glossary
         self.notesLlm = notesLlm
@@ -392,6 +395,7 @@ public struct ModelReadiness: Codable, Equatable, Sendable {
         case ready
         case nextSteps = "next_steps"
         case whisper
+        case asrJa = "asr_ja"
         case catTranslate = "cat_translate"
         case glossary
         case notesLlm = "notes_llm"

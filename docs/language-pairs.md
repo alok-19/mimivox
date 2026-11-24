@@ -1,6 +1,6 @@
 # Language pairs
 
-A session has one `LanguagePair` (`src/mimivox/languages.py`): `source_lang` is what Whisper
+A session has one `LanguagePair` (`src/mimivox/languages.py`): `source_lang` is what the recognizer
 hears, and `target_lang` is the caption language. Settings store both codes.
 `/api/session/start` accepts both fields to override the saved pair for a session.
 
@@ -8,9 +8,9 @@ Supported: `ja-en` (default), `zh-en`, `ko-en`, `en-ja`. Anything else is a 400.
 
 | Stage | ja-en | other pairs |
 |---|---|---|
-| Whisper | `language="ja"`, `。、` prompt | `language=<source>`, per-language prompt base |
+| Speech recognition | Haas-ja v1.0 (no language or prompt input) | Whisper, `language=<source>`, per-language prompt base |
 | Translator | CAT-Translate (unchanged) | Qwen3-4B-Instruct (the meeting-notes model, `notes_llm`) |
-| Glossary terms | yes | yes (term sources bias Whisper, targets are substituted before translation) |
+| Glossary terms | yes, substituted before translation only (no Whisper prompt bias under Haas) | yes (term sources bias Whisper, targets are substituted before translation) |
 | Glossary ASR fixes | yes | no effect (their Japanese sources never match other text) |
 | Context translation | yes | yes (last 3 lines as chat turns, echo guard retries without context) |
 | Confidence flags | yes | yes (Qwen token logprobs; thresholds are CAT-tuned, not re-tuned) |

@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from mimivox import asr, notes_llm, pair_translate, pipeline
 from mimivox.api_adapter import api_state, router
-from mimivox.config import ASRResult
+from mimivox.config import HAAS_JA_MODEL, WHISPER_MODEL, ASRResult
 from mimivox.glossary import build_initial_prompt
 from mimivox.languages import (
     DEFAULT_PAIR,
@@ -237,6 +237,48 @@ async def test_split_sentence_is_not_revised_outside_ja(monkeypatch):
     # A trailing comma would merge for ja-en; for zh it stays two captions.
     _, events = await _run(monkeypatch, ZH, ["我们先看预算，", "然后讨论时间表。"])
     assert [e["kind"] for e in events if e["kind"] in ("final", "revision")] == ["final", "final"]
+
+
+@pytest.mark.parametrize(
+    ("pair", "model"),
+    [
+        (DEFAULT_PAIR, HAAS_JA_MODEL),
+        (EN_JA, WHISPER_MODEL),
+        (ZH, WHISPER_MODEL),
+        (KO, WHISPER_MODEL),
+    ],
+)
+async def test_session_selects_the_source_language_model(monkeypatch, pair, model):
+    chosen = []
+
+    async def idle(*a, **k):
+        return None
+
+    async def fake_asr(asr_q, display_q, *a, **k):
+        chosen.append(asr.get_asr_model())
+        await display_q.put(None)
+
+    monkeypatch.setattr(pipeline, "feed_wav", idle)
+    monkeypatch.setattr(pipeline, "asr_worker", fake_asr)
+    monkeypatch.setattr(pipeline, "display_worker", idle)
+    monkeypatch.setattr(pair_translate.LlmTranslator, "load", lambda self: None)
+    preloaded = []
+    monkeypatch.setattr(pipeline, "preload_asr_model", preloaded.append)
+    try:
+        await pipeline.run("x.wav", live=False, asr_only=False, save_log=False, pair=pair)
+        assert chosen == [model] and preloaded == [model]
+        await pipeline.run(
+            "x.wav",
+            live=True,
+            asr_only=False,
+            save_log=False,
+            pair=pair,
+            asr_model_id="custom/whisper",
+        )
+        assert chosen[-1] == "custom/whisper"
+    finally:
+        asr.set_asr_model(WHISPER_MODEL)
+        asr.set_asr_language("ja")
 
 
 async def test_cache_is_cleared_when_pair_changes(monkeypatch):

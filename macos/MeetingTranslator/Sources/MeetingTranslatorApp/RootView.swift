@@ -207,7 +207,8 @@ extension TranslatorStore {
         case .ready, nil:
             break
         }
-        if models.whisper?.ready == false || models.catTranslate?.ready == false {
+        if models.whisper?.ready == false || models.asrJa?.ready == false
+            || models.catTranslate?.ready == false {
             return SystemHealth(
                 level: .problem, title: L10n.text("Model missing", language: language),
                 detail: L10n.text("Open Settings, then Models, to download the missing caption models.", language: language)

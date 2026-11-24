@@ -73,7 +73,9 @@ struct ModelsSettingsTab: View {
         if step == "loading_models" {
             return L10n.text("Downloading models…")
         }
-        for prefix in ["Download whisper model:", "Download CAT model:"] where step.hasPrefix(prefix) {
+        for prefix in [
+            "Download whisper model:", "Download Japanese speech model:", "Download CAT model:",
+        ] where step.hasPrefix(prefix) {
             return L10n.text(prefix) + step.dropFirst(prefix.count)
         }
         return L10n.text(step)
@@ -124,13 +126,14 @@ struct ModelsSettingsTab: View {
 }
 
 private enum ModelKind: CaseIterable, Identifiable {
-    case whisper, catTranslate, notesLlm
+    case whisper, asrJa, catTranslate, notesLlm
 
     var id: Self { self }
 
     var title: String {
         switch self {
         case .whisper: L10n.text("Speech recognition")
+        case .asrJa: L10n.text("Japanese speech recognition")
         case .catTranslate: L10n.text("Translation")
         case .notesLlm: L10n.text("Meeting notes")
         }
@@ -141,6 +144,7 @@ private enum ModelKind: CaseIterable, Identifiable {
         let readiness = store.status?.modelReadiness
         return switch self {
         case .whisper: readiness?.whisper
+        case .asrJa: readiness?.asrJa
         case .catTranslate: readiness?.catTranslate
         case .notesLlm: readiness?.notesLlm
         }

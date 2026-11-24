@@ -29,8 +29,6 @@ from mimivox.config import (
     _MT_SIGNALS_CACHE,
     _TRANSLATION_CACHE,
     _TRANSLATION_CACHE_MAX,
-    ASR_MODEL_FILE,
-    ASR_MODEL_LIVE,
     ASR_Q_MAXSIZE,
     ASR_Q_STALE_WAIT_S,
     DATA_DIR,
@@ -786,14 +784,9 @@ async def run(
     # has better and far more predictable end-to-end throughput.
     shared_mlx_lock()
 
-    # Select ASR model for this session. Live and file both default to
-    # turbo-q8; live may override via settings.asr_model_live / asr_model_id.
-    if asr_model_id:
-        model_id = asr_model_id
-    elif live:
-        model_id = ASR_MODEL_LIVE
-    else:
-        model_id = ASR_MODEL_FILE
+    # The source language's model, unless settings.asr_model_live / asr_model_id
+    # names another one.
+    model_id = asr_model_id or pair.src.asr_model
     set_asr_model(model_id)
     set_asr_language(pair.whisper_language)
     # The translation cache is keyed by source text alone: a different pair
@@ -807,13 +800,10 @@ async def run(
         print(f"⏳ Translator ({pair.code}): {pair_translate.NOTES_MODEL_ID}")
         await asyncio.get_running_loop().run_in_executor(None, llm.load)
         print("   ✅ ready")
-    # Preload if it isn't the boot-loaded file model (first live use of an
-    # alternate live model would otherwise stall on download/load).
-    if model_id != ASR_MODEL_FILE:
-        loop_pre = asyncio.get_running_loop()
-        print(f"⏳ Preload ASR (live): {model_id}")
-        await loop_pre.run_in_executor(None, preload_asr_model, model_id)
-        print("   ✅ ready")
+    # Idempotent: a model already loaded at boot returns from its cache.
+    print(f"⏳ Preload ASR: {model_id}")
+    await asyncio.get_running_loop().run_in_executor(None, preload_asr_model, model_id)
+    print("   ✅ ready")
 
     # Live sessions tighten VAD endpointing to cut perceived latency.
     if live:

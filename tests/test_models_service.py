@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mimivox.config import CAT_MODEL_ID, WHISPER_MODEL
+from mimivox.config import CAT_MODEL_ID, HAAS_JA_MODEL, WHISPER_MODEL
 from mimivox.models_service import (
     _set_download_state,
     download_models,
@@ -112,6 +112,21 @@ def test_verify_structure():
     assert result["whisper"]["ready"] is True
 
 
+def test_verify_requires_the_japanese_speech_model():
+    def _present(model_id: str):
+        if model_id == HAAS_JA_MODEL:
+            return False, "Not found in cache", None
+        return True, "ok", "/p"
+
+    with patch("mimivox.models_service.model_present", side_effect=_present):
+        result = verify({})
+    assert result["asr_ja"]["ready"] is False
+    assert result["asr_ja"]["model_id"] == HAAS_JA_MODEL
+    assert result["whisper"]["ready"] is True
+    assert result["ready"] is False
+    assert f"Download Japanese speech model: {HAAS_JA_MODEL}" in result["next_steps"]
+
+
 def test_verify_missing_reports_not_ready():
     def _present(model_id: str):
         if "missing" in model_id:
@@ -156,7 +171,8 @@ def test_download_models_calls_snapshot(tmp_path: Path):
     assert result["ok"] is True, result
     assert result["whisper"]["skipped"] is True
     assert result["cat_translate"]["path"] == "/cache/org/cat-model"
-    assert calls == ["org/cat-model"]
+    assert result["asr_ja"]["path"] == f"/cache/{HAAS_JA_MODEL}"
+    assert calls == [HAAS_JA_MODEL, "org/cat-model"]
 
 
 @pytest.fixture(autouse=True)

@@ -133,7 +133,7 @@ rm -rf "${SITE:?}/mlx/include" "${SITE:?}/mlx/lib/cmake" "${SITE:?}/build" \
   "${PY_DST:?}/lib/python$PYTHON_VERSION"/{idlelib,ensurepip,tkinter,lib2to3,pydoc_data,turtledemo} \
   "${PY_DST:?}/lib/python$PYTHON_VERSION"/lib-dynload/_tkinter*
 # Fail the build here, not on a user's Mac, if the trim removed something used.
-APP_IMPORTS="import mimivox.pipeline, mimivox.server, mlx_whisper, mlx_lm, onnxruntime, sudachipy; mimivox.vad.SileroOnnx(); import mimivox.api_adapter as a"
+APP_IMPORTS="import mimivox.pipeline, mimivox.server, mlx_whisper, haas_ja_local, haas_ja_local.mlx_model, mlx_lm, onnxruntime, sudachipy; mimivox.vad.SileroOnnx(); import mimivox.api_adapter as a"
 "$PY_DST/bin/python3" -I -c "$APP_IMPORTS"
 
 echo "==> precompiling bytecode"

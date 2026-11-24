@@ -204,13 +204,14 @@ _offline_state: dict[str, Any] = {"locked": False, "reason": "not evaluated"}
 
 def models_cached_locally(settings: dict[str, Any] | None = None) -> bool:
     """True when both the ASR and translation models resolve without network."""
-    from mimivox.config import CAT_MODEL_ID, WHISPER_MODEL
+    from mimivox.config import CAT_MODEL_ID, HAAS_JA_MODEL, WHISPER_MODEL
     from mimivox.models_service import model_present
 
     paths = (settings or {}).get("model_paths")
     paths = paths if isinstance(paths, dict) else {}
     ids = (
         str(paths.get("whisper") or WHISPER_MODEL),
+        HAAS_JA_MODEL,
         str(paths.get("cat_translate") or CAT_MODEL_ID),
     )
     return all(model_present(model_id)[0] for model_id in ids)

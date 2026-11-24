@@ -2,24 +2,27 @@
 
 from __future__ import annotations
 
+import functools
 import io
 import re as _re
 import sys as _sys
 import threading as _threading
 import time
 from collections.abc import Callable
+from typing import Any
 
 import mlx_whisper
 from mlx_whisper import load_models
 
 from mimivox.confidence import AsrSignals, asr_signals_from_segments
-from mimivox.config import _SEG_RE, SAMPLE_RATE, WHISPER_MODEL
+from mimivox.config import _SEG_RE, HAAS_JA_MODEL, SAMPLE_RATE, WHISPER_MODEL
+from mimivox.languages import DEFAULT_PAIR
 
 # ---------------------------------------------------------------------------
 # Active ASR model (swappable per session)
 # ---------------------------------------------------------------------------
-# Defaults to turbo-q8 (file + live). run() may set ASR_MODEL_LIVE override
-# for live experiments and preloads non-default models before first chunk.
+# pipeline.run() sets it to the source language's model (languages.Language.asr_model)
+# or an explicit override; HAAS_JA_MODEL selects the Haas engine, any other id Whisper.
 _asr_model_id: str = WHISPER_MODEL
 
 
@@ -60,11 +63,22 @@ def get_asr_prompt() -> str:
     return _asr_prompt
 
 
-def preload_asr_model(model_id: str) -> None:
-    """Eagerly load a model into the mlx_whisper cache (call off the loop)."""
-    from mlx_whisper import load_models
+@functools.cache
+def _load_haas(model_id: str) -> tuple[Any, Any]:
+    from haas_ja_local import load_model
 
-    load_models.load_model(model_id or WHISPER_MODEL)
+    from mimivox.models_service import fetch_model_dir
+
+    return load_model(fetch_model_dir(model_id))
+
+
+def preload_asr_model(model_id: str) -> None:
+    """Eagerly load a model into its engine's cache (call off the loop)."""
+    model_id = model_id or WHISPER_MODEL
+    if model_id == HAAS_JA_MODEL:
+        _load_haas(model_id)
+    else:
+        load_models.load_model(model_id)
 
 
 # ---------------------------------------------------------------------------
@@ -98,13 +112,28 @@ _sys.stdout = _routing_stdout
 # ---------------------------------------------------------------------------
 # ASR inference
 # ---------------------------------------------------------------------------
+def _trim_trailing_silence(audio: np.ndarray) -> np.ndarray:
+    # Whisper is known to loop-hallucinate (e.g. "移植、 master config, " ×25)
+    # when fed chunks that end in silence.
+    if audio.size:
+        above = np.abs(audio) >= 0.01
+        if above.any():
+            last = int(np.flatnonzero(above)[-1])
+            pad = min(SAMPLE_RATE // 50, audio.size - last - 1)  # ~20ms breath
+            audio = audio[: min(audio.size, last + pad + 1)]
+    return audio
+
+
 def _do_asr_streaming(
     audio: np.ndarray,
     on_segment: Callable[[str], None],
 ) -> tuple[str, float, AsrSignals | None]:
-    """Single-pass large-model transcription. Returns (text, seconds, signals).
+    """Single-pass transcription. Returns (text, seconds, signals).
 
-    verbose=True makes mlx_whisper emit one line per decoded segment:
+    HAAS_JA_MODEL runs Haas-ja (no segment stream, no signals); any other model
+    id runs Whisper.
+
+    For Whisper, verbose=True makes mlx_whisper emit one line per decoded segment:
         [00:00.000 --> 00:02.340]  テキスト
     Those lines are captured via a thread-local handler on _routing_stdout,
     isolated to this executor thread. Other threads are unaffected.
@@ -116,14 +145,9 @@ def _do_asr_streaming(
             on_segment(m.group(1).strip())
         return len(s)
 
-    # Trim trailing low-amplitude samples: Whisper is known to loop-hallucinate
-    # (e.g. "移植、 master config, " ×25) when fed chunks that end in silence.
-    if audio.size:
-        above = np.abs(audio) >= 0.01
-        if above.any():
-            last = int(np.flatnonzero(above)[-1])
-            pad = min(SAMPLE_RATE // 50, audio.size - last - 1)  # ~20ms breath
-            audio = audio[: min(audio.size, last + pad + 1)]
+    audio = _trim_trailing_silence(audio)
+    if get_asr_model() == HAAS_JA_MODEL:
+        return _haas_transcribe(audio, on_segment)
 
     _routing_stdout._local.capture = _handle
     t0 = time.perf_counter()
@@ -145,6 +169,19 @@ def _do_asr_streaming(
         _routing_stdout._local.capture = None
     signals = asr_signals_from_segments(result.get("segments"))
     return result["text"].strip(), time.perf_counter() - t0, signals
+
+
+def _haas_transcribe(
+    audio: np.ndarray, on_segment: Callable[[str], None]
+) -> tuple[str, float, None]:
+    from haas_ja_local import transcribe
+
+    backend, tokenizer = _load_haas(HAAS_JA_MODEL)
+    t0 = time.perf_counter()
+    text = transcribe(backend, tokenizer, audio).text.strip()
+    if text:
+        on_segment(text)
+    return text, time.perf_counter() - t0, None
 
 
 # ---------------------------------------------------------------------------
@@ -221,9 +258,10 @@ def _deduplicate_phrases(text: str) -> str:
 # Model loading
 # ---------------------------------------------------------------------------
 def load_asr_model() -> None:
-    print(f"⏳ Whisper large: {WHISPER_MODEL}")
+    model_id = DEFAULT_PAIR.src.asr_model
+    print(f"⏳ ASR: {model_id}")
     t0 = time.perf_counter()
-    load_models.load_model(WHISPER_MODEL)
+    preload_asr_model(model_id)
     print(f"   ✅ {time.perf_counter() - t0:.2f}s")
 
 

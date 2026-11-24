@@ -49,10 +49,8 @@ def test_default_settings_shape():
 
 
 def test_resolve_asr_model_live_default_and_override():
-    from mimivox.config import ASR_MODEL_LIVE
-
-    assert resolve_asr_model_live({}) == ASR_MODEL_LIVE
-    assert resolve_asr_model_live({"asr_model_live": ""}) == ASR_MODEL_LIVE
+    assert resolve_asr_model_live({}) is None
+    assert resolve_asr_model_live({"asr_model_live": "  "}) is None
     assert (
         resolve_asr_model_live({"asr_model_live": "mlx-community/whisper-tiny-mlx-q4"})
         == "mlx-community/whisper-tiny-mlx-q4"

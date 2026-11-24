@@ -305,6 +305,7 @@
 "Model Locations" = "モデルの場所";
 "Translation model" = "翻訳モデル";
 "Speech recognition" = "音声認識";
+"Japanese speech recognition" = "日本語の音声認識";
 "Download from" = "ダウンロード元";
 "Access token" = "アクセストークン";
 "Optional" = "任意";
@@ -464,6 +465,7 @@
 "On-device · offline" = "このMac上で処理 · オフライン";
 "On-device · downloads allowed" = "このMac上で処理 · ダウンロード可";
 "Download whisper model:" = "Whisperモデルをダウンロード:";
+"Download Japanese speech model:" = "日本語音声認識モデルをダウンロード:";
 "Download CAT model:" = "CATモデルをダウンロード:";
 "Restart server to apply model path changes" = "モデルの保存先を変更した場合は、ヘルパーを再起動します。";
 "Download the Whisper speech model (about 1.6 GB)" = "Whisper音声認識モデル（約1.6 GB）をダウンロードします。";

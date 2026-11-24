@@ -22,7 +22,7 @@ import tempfile
 from pathlib import Path
 
 from mimivox import pipeline
-from mimivox.config import ASR_MODEL_FILE, reset_translation_cache
+from mimivox.config import reset_translation_cache
 from mimivox.eval.fleurs import DEFAULT_CACHE, FLEURS_CODE, load_clips
 from mimivox.eval.meetings import normalize_rms, read_wav, write_wav
 from mimivox.eval.scoring import aggregate_meetings, markdown_table, score_clips, score_meeting
@@ -189,7 +189,7 @@ def main() -> None:
     meta = {
         "timestamp": out.name,
         "git": git_sha(),
-        "asr_model": ASR_MODEL_FILE,
+        "asr_model": pair.src.asr_model,
         "pair": pair.code,
         "glossary": args.glossary,
         "clips_requested": args.clips,

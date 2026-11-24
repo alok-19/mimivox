@@ -113,11 +113,11 @@ async def test_download_reports_bytes_then_loads(cache):
     await mgr.boot()
     await mgr.download()
     await _until(mgr, "downloading")
-    cache["bytes"] = GB // 2  # per repo: 1 GB of 2 GB total
+    cache["bytes"] = GB // 2  # per repo: 1.5 GB of 3 GB total
     await asyncio.sleep(0.1)
     state = mgr.state
     assert isinstance(state, Downloading)
-    assert state.total_bytes == 2 * GB and state.done_bytes == GB
+    assert state.total_bytes == 3 * GB and state.done_bytes == 3 * GB // 2
     cache["bytes"] = GB
     cache["present"] = True
     proc.finish(0)
