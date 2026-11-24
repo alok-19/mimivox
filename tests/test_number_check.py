@@ -15,6 +15,9 @@ from mimivox.number_check import group_digits, unsupported_numbers
         ("1789年10月6日のことです。", "It happened on October 6, 1789"),
         ("円周率は３．１４です。", "Pi is 3.14"),
         ("明日話すつもりです。", "I will talk about it tomorrow"),
+        ("最終列車は12時くらいです", "The last train departs at about 12:00"),
+        ("最終列車は12時半です", "The last train departs at 12:30"),
+        ("7時15分に始まります", "It starts at 7:15"),
     ],
 )
 def test_numbers_the_japanese_accounts_for_pass(ja, en):
@@ -29,6 +32,8 @@ def test_numbers_the_japanese_accounts_for_pass(ja, en):
             "Japan has about 70,000 islands, the seventh largest in the world",
             ["70,000"],
         ),
+        ("最終列車は12時です", "The last train departs at 12:30", ["30"]),
+        ("最終列車は11時です", "The last train departs at 12:00", ["12"]),
         (
             "17、89年10月6日、国王ルイ16世は戻されました。",
             "Year 1989 – On October 6, 1863, King Louis 16 was returned",

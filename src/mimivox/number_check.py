@@ -27,7 +27,9 @@ _EN_SCALES = {
 _ARABIC = r"\d+(?:,\d{3})*(?:\.\d+)?"
 _JA_NUMBER_RE = re.compile(rf"(?:{_ARABIC}|[〇一二三四五六七八九十百千万億兆])+")
 _EN_NUMBER_RE = re.compile(
-    rf"(?<![\w.])({_ARABIC})(?:\s+({'|'.join(_EN_SCALES)})\b)?", re.IGNORECASE
+    rf"(?<![\w.])(?:(?P<hour>\d{{1,2}}):(?P<minute>\d{{2}})(?!\d)"
+    rf"|(?P<number>{_ARABIC})(?:\s+(?P<scale>{'|'.join(_EN_SCALES)})\b)?)",
+    re.IGNORECASE,
 )
 # A bare integer of 4+ digits that is not a year: "7000" but not "1789年".
 _UNGROUPED_RE = re.compile(r"(?<![\d,.])(\d{4,})(?![\d,.]|\s*年)")
@@ -66,13 +68,29 @@ def ja_numbers(ja: str) -> set[float]:
     return values
 
 
+def _clock_minute_missing(ja: str, allowed: set[float], minute: str) -> bool:
+    """A clock time's minutes: ":00" has no Japanese counterpart, and ":30" may be 半."""
+    if minute == "00":
+        return False
+    if minute == "30" and "時半" in unicodedata.normalize("NFKC", ja):
+        return False
+    return float(minute) not in allowed
+
+
 def unsupported_numbers(ja: str, en: str) -> list[str]:
     """English numbers that match no number in the Japanese line, in order."""
     allowed = ja_numbers(ja)
     missing: list[str] = []
     for m in _EN_NUMBER_RE.finditer(en):
-        value = _value(m.group(1))
-        scaled = value * _EN_SCALES[m.group(2).lower()] if m.group(2) else value
+        if m.group("hour"):
+            if float(m.group("hour")) not in allowed:
+                missing.append(m.group("hour"))
+            if _clock_minute_missing(ja, allowed, m.group("minute")):
+                missing.append(m.group("minute"))
+            continue
+        value = _value(m.group("number"))
+        scale = m.group("scale")
+        scaled = value * _EN_SCALES[scale.lower()] if scale else value
         if value not in allowed and scaled not in allowed:
             missing.append(m.group())
     return missing
