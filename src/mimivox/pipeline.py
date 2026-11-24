@@ -499,7 +499,9 @@ async def display_worker(
             )
         except Exception as exc:
             if sse_broadcast:
-                sse_broadcast({"kind": "error", "ts": "", "detail": f"translate failed: {exc}"})
+                sse_broadcast(
+                    {"kind": "error", "ts": "", "detail": "Could not translate this caption."}
+                )
             print(f"  ⚠️  translate failed: {exc}")
             return "", 0.0, None
         _TRANSLATION_CACHE[ja_key] = en_text

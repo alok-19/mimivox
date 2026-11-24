@@ -195,15 +195,23 @@ def _load_wav_mono16k(path: str) -> np.ndarray:
     # Resample / widen via ffmpeg when not already 16-bit PCM at target rate.
     # Stereo at 16 kHz is mono-mixed in-process (avoids treating L/R as interleaved mono).
     if sw != 2 or sr != SAMPLE_RATE:
-        tmp = tempfile.mktemp(suffix=".wav")
-        subprocess.run(
-            ["ffmpeg", "-y", "-i", path, "-ar", str(SAMPLE_RATE), "-ac", "1", tmp],
-            capture_output=True,
-            check=True,
-        )
-        audio = _load_wav_mono16k(tmp)
-        Path(tmp).unlink(missing_ok=True)
-        return audio
+        with tempfile.TemporaryDirectory(prefix="mimivox-audio-") as directory:
+            output = str(Path(directory) / "converted.wav")
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-i",
+                    str(Path(path).absolute()),
+                    "-ar",
+                    str(SAMPLE_RATE),
+                    "-ac",
+                    "1",
+                    output,
+                ],
+                capture_output=True,
+                check=True,
+            )
+            return _load_wav_mono16k(output)
     audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
     if ch > 1:
         audio = audio.reshape(-1, ch).mean(axis=1).astype(np.float32)

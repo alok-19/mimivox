@@ -1,4 +1,5 @@
 import asyncio
+import shutil
 import wave
 from pathlib import Path
 
@@ -63,6 +64,20 @@ def test_load_wav_mono_mixes_16k_stereo(tmp_path):
     assert audio.ndim == 1
     assert len(audio) == n
     assert np.allclose(audio, 0.0, atol=1e-3)
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required for conversion")
+def test_load_wav_resamples_to_16k_and_cleans_up(tmp_path, monkeypatch):
+    monkeypatch.setattr("tempfile.tempdir", str(tmp_path))
+    path = tmp_path / "input.wav"
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(8000)
+        wf.writeframes(np.zeros(8000, dtype="<i2").tobytes())
+
+    assert _load_wav_mono16k(str(path)).shape == (SAMPLE_RATE,)
+    assert list(tmp_path.iterdir()) == [path]
 
 
 def _write_sine_wav(path: Path, duration_s: float, freq: float = 440.0) -> None:

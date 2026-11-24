@@ -181,6 +181,33 @@ def test_reset_cache_refuses_global_path(tmp_path: Path):
     assert "Refusing" in result["message"]
 
 
+def test_reset_cache_distinguishes_subdirectories_from_sibling_paths(tmp_path: Path, monkeypatch):
+    managed = tmp_path / "models"
+    scoped = managed / "download"
+    sibling = tmp_path / "models-other"
+    scoped.mkdir(parents=True)
+    sibling.mkdir()
+    monkeypatch.setattr("mimivox.models_service.MIMIVOX_MODELS_DIR", managed)
+
+    assert not reset_cache(yes=True, scoped_path=str(sibling))["ok"]
+    assert reset_cache(yes=True, scoped_path=str(scoped))["ok"]
+    assert not scoped.exists()
+    assert sibling.is_dir()
+
+
+def test_reset_cache_leaves_linked_cache_target_alone(tmp_path: Path, monkeypatch):
+    managed = tmp_path / "models"
+    other = tmp_path / "other"
+    other.mkdir()
+    managed.symlink_to(other, target_is_directory=True)
+    monkeypatch.setattr("mimivox.models_service.MIMIVOX_MODELS_DIR", managed)
+
+    result = reset_cache(yes=True)
+
+    assert result["ok"] is False
+    assert other.is_dir()
+
+
 def test_reset_cache_clears_managed_dir(tmp_path: Path, monkeypatch):
     managed = tmp_path / "models"
     managed.mkdir()
@@ -249,7 +276,8 @@ def test_api_models_verify():
     assert "model_readiness" in resp.json()
 
 
-def test_api_models_reset_refused():
+@pytest.mark.parametrize("body", [{}, {"yes": "false"}])
+def test_api_models_reset_refused(body, monkeypatch):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -258,7 +286,8 @@ def test_api_models_reset_refused():
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)
-    resp = client.post("/api/models/reset-cache", json={})
+    monkeypatch.setattr("mimivox.models_service.get_download_state", lambda: {"busy": True})
+    resp = client.post("/api/models/reset-cache", json=body)
     assert resp.status_code == 400
     assert "refused" in resp.json()["message"].lower()
 

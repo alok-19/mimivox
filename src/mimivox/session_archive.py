@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import threading
 import wave
@@ -65,10 +66,17 @@ def _contained_session_path(session_id: str, suffix: str) -> Path:
     session_id = validate_session_id(session_id)
     if session_id is None:
         raise ValueError("session ID is required")
-    path = _SESSIONS_DIR / f"{session_id}{suffix}"
-    expected_path = _SESSIONS_DIR.resolve() / f"{session_id}{suffix}"
+    return _direct_child(_SESSIONS_DIR, f"{session_id}{suffix}")
+
+
+def _direct_child(directory: Path, name: str) -> Path:
+    path = directory / name
     try:
-        if path.resolve() != expected_path:
+        try:
+            resolved = os.path.realpath(path, strict=True)
+        except FileNotFoundError:
+            resolved = os.path.realpath(path)
+        if resolved != os.path.join(os.path.realpath(directory), name):
             raise ValueError("session path must stay inside the sessions directory")
     except (OSError, RuntimeError) as exc:
         raise ValueError("session path must stay inside the sessions directory") from exc
@@ -97,7 +105,7 @@ def gaps_dir(session_id: str) -> Path:
 
 
 def gap_audio_file(session_id: str, gap_id: int) -> Path:
-    return gaps_dir(session_id) / f"{int(gap_id)}.wav"
+    return _direct_child(gaps_dir(session_id), f"{int(gap_id)}.wav")
 
 
 def save_gap_audio(session_id: str, gap_id: int, audio: Any) -> bool:
@@ -298,7 +306,7 @@ def _safe_id(session_id: str) -> bool:
     return (
         isinstance(session_id, str)
         and bool(session_id)
-        and session_id == Path(session_id).name
+        and session_id.casefold() != "index"
         and "/" not in session_id
         and "\\" not in session_id
         and "\x00" not in session_id

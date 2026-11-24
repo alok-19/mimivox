@@ -107,6 +107,27 @@ def test_archive_rejects_unsafe_session_ids(tmp_path, monkeypatch, session_id):
         session_archive.archive_session(session_id, [])
 
 
+@pytest.mark.parametrize("reserved_id", ["index", "INDEX"])
+def test_delete_session_preserves_the_archive_index(tmp_path, monkeypatch, reserved_id):
+    _patch_sessions_root(monkeypatch, tmp_path)
+    session_archive.archive_session("normal-session", _sample_events())
+
+    assert not session_archive.delete_session(reserved_id)
+    assert [entry["id"] for entry in session_archive.list_sessions()] == ["normal-session"]
+
+
+def test_gap_audio_rejects_a_linked_file(tmp_path, monkeypatch):
+    _patch_sessions_root(monkeypatch, tmp_path)
+    outside = tmp_path / "other.wav"
+    outside.write_bytes(b"unchanged")
+    gap = session_archive.gap_audio_file("sid", 1)
+    gap.parent.mkdir(parents=True)
+    gap.symlink_to(outside)
+
+    assert not session_archive.save_gap_audio("sid", 1, [0.0])
+    assert outside.read_bytes() == b"unchanged"
+
+
 def test_archive_rejects_session_file_symlink_outside_directory(tmp_path, monkeypatch):
     _patch_sessions_root(monkeypatch, tmp_path)
     outside = tmp_path / "outside.json"
