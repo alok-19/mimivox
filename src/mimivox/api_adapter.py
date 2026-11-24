@@ -891,21 +891,24 @@ async def api_session_start(body: dict):
             )
     elif source == "replay-file":
         wav = settings.get("replay_audio_path") or _DEFAULT_REPLAY
+        max_duration_s = resolve_replay_duration_s(settings)
     else:
-        # Authenticated local clients can also provide a WAV path directly.
-        wav = source
-
-    if wav is not None:
-        try:
-            is_file = isinstance(wav, str) and Path(wav).is_file()
-        except (OSError, ValueError):
-            is_file = False
-        if not is_file:
+        # Treat unknown source as a WAV path (handy for direct paths).
+        candidate = Path(source)
+        if candidate.exists():
+            wav = str(candidate)
+            max_duration_s = resolve_replay_duration_s(settings)
+        else:
             return JSONResponse(
-                {"message": "Select an existing WAV file for replay.", "session_id": None},
+                {"message": f"Unknown source: {source}", "session_id": None},
                 status_code=400,
             )
-        max_duration_s = resolve_replay_duration_s(settings)
+
+    if wav and not Path(wav).exists():
+        return JSONResponse(
+            {"message": f"WAV not found: {wav}", "session_id": None},
+            status_code=400,
+        )
 
     # Session-start-only: latency VAD/chunk presets + glossary refresh.
     # Cloud toggles are stored but never enable network translation.

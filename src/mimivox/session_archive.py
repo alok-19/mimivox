@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import shutil
 import threading
 import wave
@@ -71,7 +72,11 @@ def _contained_session_path(session_id: str, suffix: str) -> Path:
 def _direct_child(directory: Path, name: str) -> Path:
     path = directory / name
     try:
-        if path.resolve() != directory.resolve() / name:
+        try:
+            resolved = os.path.realpath(path, strict=True)
+        except FileNotFoundError:
+            resolved = os.path.realpath(path)
+        if resolved != str(directory.resolve() / name):
             raise ValueError("session path must stay inside the sessions directory")
     except (OSError, RuntimeError) as exc:
         raise ValueError("session path must stay inside the sessions directory") from exc

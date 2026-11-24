@@ -181,6 +181,20 @@ def test_reset_cache_refuses_global_path(tmp_path: Path):
     assert "Refusing" in result["message"]
 
 
+def test_reset_cache_distinguishes_subdirectories_from_sibling_paths(tmp_path: Path, monkeypatch):
+    managed = tmp_path / "models"
+    scoped = managed / "download"
+    sibling = tmp_path / "models-other"
+    scoped.mkdir(parents=True)
+    sibling.mkdir()
+    monkeypatch.setattr("mimivox.models_service.MIMIVOX_MODELS_DIR", managed)
+
+    assert not reset_cache(yes=True, scoped_path=str(sibling))["ok"]
+    assert reset_cache(yes=True, scoped_path=str(scoped))["ok"]
+    assert not scoped.exists()
+    assert sibling.is_dir()
+
+
 def test_reset_cache_leaves_linked_cache_target_alone(tmp_path: Path, monkeypatch):
     managed = tmp_path / "models"
     other = tmp_path / "other"

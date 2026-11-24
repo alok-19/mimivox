@@ -7,6 +7,7 @@ population; a server restart is still required to swap model IDs.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import threading
 from collections.abc import Callable
@@ -367,12 +368,16 @@ def reset_cache(
         if MIMIVOX_MODELS_DIR.is_symlink():
             return {"ok": False, "message": "Refusing to clear a linked model cache."}
         target = Path(scoped_path) if scoped_path else managed_root
-        resolved = target.resolve()
+        resolved = os.path.realpath(target)
     except (OSError, RuntimeError, ValueError):
         return {"ok": False, "message": "Invalid model cache path."}
 
     # Must be exactly managed root or a subpath of it.
-    if not resolved.is_relative_to(managed_root):
+    if resolved == str(managed_root):
+        resolved_path = managed_root
+    elif resolved.startswith(str(managed_root) + os.sep):
+        resolved_path = Path(resolved)
+    else:
         return {
             "ok": False,
             "message": "Refusing to clear a path outside the MimiVox model cache.",
@@ -386,9 +391,9 @@ def reset_cache(
 
     # The speech, translation and notes models live in the shared HuggingFace
     # cache, so clearing the managed root alone would free nothing.
-    repos = [_hf_repo_dir(r) for r in MIMIVOX_REPOS] if resolved == managed_root else []
+    repos = [_hf_repo_dir(r) for r in MIMIVOX_REPOS] if resolved_path == managed_root else []
     try:
-        targets = [t for t in [*repos, resolved] if t.exists()]
+        targets = [t for t in [*repos, resolved_path] if t.exists()]
         freed = sum(_tree_size(t) for t in targets)
         for t in targets:
             t.unlink() if t.is_file() else shutil.rmtree(t)
@@ -397,7 +402,7 @@ def reset_cache(
         return {"ok": False, "message": "Could not clear the model cache."}
 
     removed = sum(t in targets for t in repos)
-    if resolved == managed_root:
+    if resolved_path == managed_root:
         message = (
             f"Removed {removed} model{'s' if removed != 1 else ''} ({freed / 1e9:.1f} GB)"
             if removed
